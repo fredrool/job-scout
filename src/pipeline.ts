@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from './config.js';
 import { DiscoveryService } from './discovery.js';
 import { BedrockEvaluator } from './ai.js';
@@ -8,28 +8,50 @@ import { CompanyRegistry } from './registry.js';
 import type { JobStorage } from './storage.js';
 import { SesNotificationService } from './notifications.js';
 import { deduplicateJobs, MarketplaceDiscoveryService } from './marketplace-discovery.js';
-import type { NormalizedJob, SearchProfile, UserFeedback } from './domain.js';
+import type { NormalizedJob, SearchProfile, SourceHealth, UserFeedback } from './domain.js';
 import type { EvaluationRecord } from './ai.js';
+import {
+  ScanLogger,
+  accumulateSourceFailures,
+  logDiscoverySource,
+  logJobEvaluation,
+  SCAN_METRIC_DEFINITIONS,
+  type EvaluationDecision,
+  type LogSink,
+} from './scan-observability.js';
 
 export interface ScanSummary {
   runId: string;
+  scanStartedAt: string;
+  scanCompletedAt: string;
+  scanDurationMs: number;
   discovered: number;
   evaluated: number;
   evaluationsFailed: number;
+  scoredAtOrAboveThreshold: number;
+  belowThreshold: number;
+  eligibilityExcluded: number;
   queued: number;
+  alreadyQueued: number;
   emailed: number;
   skippedBecauseLocked: boolean;
   sourceFailures: number;
+  sourceFailuresByProvider: Record<string, number>;
   dryRun: boolean;
+  dryRunEmailSuppressed: boolean;
+  qualifyingWouldHaveEmailed: number;
   pendingDeferred: number;
   pendingProcessed: number;
   pendingRetryQueue: number;
+  freshEvaluationSkipped: boolean;
+  freshEvaluationSkipReason?: string;
   bedrockApiCalls: number;
   bedrockCacheHits: number;
   bedrockInputTokens: number;
   bedrockOutputTokens: number;
   bedrockEstimatedCostUsd: number;
   bedrockParseRetries: number;
+  metricDefinitions: typeof SCAN_METRIC_DEFINITIONS;
 }
 
 type EvaluationStopReason = 'continue' | 'bedrock_cap' | 'deadline' | 'evaluation_failed';
@@ -46,33 +68,59 @@ export class ScanPipeline {
     @Inject(BedrockEvaluator) private readonly evaluator: BedrockEvaluator,
     @Inject('JOB_STORAGE') private readonly storage: JobStorage,
     @Inject(SesNotificationService) private readonly notifications: SesNotificationService,
+    @Optional() @Inject('SCAN_LOG_SINK') private readonly logSink?: LogSink,
   ) {}
 
   async run(): Promise<ScanSummary> {
     const runId = randomUUID();
+    const scanStartedAt = new Date().toISOString();
+    const logger = new ScanLogger(runId, this.logSink);
     const summary: ScanSummary = {
       runId,
+      scanStartedAt,
+      scanCompletedAt: scanStartedAt,
+      scanDurationMs: 0,
       discovered: 0,
       evaluated: 0,
       queued: 0,
+      alreadyQueued: 0,
       emailed: 0,
       skippedBecauseLocked: false,
       sourceFailures: 0,
+      sourceFailuresByProvider: {},
       dryRun: this.config.values.DRY_RUN,
+      dryRunEmailSuppressed: false,
+      qualifyingWouldHaveEmailed: 0,
       pendingDeferred: 0,
       pendingProcessed: 0,
       evaluationsFailed: 0,
+      scoredAtOrAboveThreshold: 0,
+      belowThreshold: 0,
+      eligibilityExcluded: 0,
       pendingRetryQueue: 0,
+      freshEvaluationSkipped: false,
       bedrockApiCalls: 0,
       bedrockCacheHits: 0,
       bedrockInputTokens: 0,
       bedrockOutputTokens: 0,
       bedrockEstimatedCostUsd: 0,
       bedrockParseRetries: 0,
+      metricDefinitions: SCAN_METRIC_DEFINITIONS,
     };
+
+    logger.info('scan_started', {
+      dryRun: summary.dryRun,
+      userId: this.config.values.USER_ID,
+      scoreThreshold: this.config.values.SCORE_THRESHOLD,
+    });
+
     const leaseSeconds = Math.ceil(this.config.values.MAX_RUNTIME_MS / 1000) + 30;
     if (!(await this.storage.acquireLease(runId, leaseSeconds))) {
       summary.skippedBecauseLocked = true;
+      summary.scanCompletedAt = new Date().toISOString();
+      summary.scanDurationMs =
+        new Date(summary.scanCompletedAt).getTime() - new Date(scanStartedAt).getTime();
+      logger.warn('scan_skipped_locked', { skippedBecauseLocked: true });
       return summary;
     }
     const deadline = Date.now() + this.config.values.MAX_RUNTIME_MS;
@@ -89,12 +137,14 @@ export class ScanPipeline {
           companies: registry.companies.slice(0, this.config.values.MAX_REQUESTS_PER_SCAN),
         }),
       ]);
+      this.logDiscoverySources(logger, marketplaceDiscovery.sources, companyDiscovery.sources);
       const discovery = {
         jobs: deduplicateJobs([...marketplaceDiscovery.jobs, ...companyDiscovery.jobs]),
         sources: [...marketplaceDiscovery.sources, ...companyDiscovery.sources],
       };
       summary.discovered = discovery.jobs.length;
       summary.sourceFailures = discovery.sources.filter((source) => !source.healthy).length;
+      summary.sourceFailuresByProvider = accumulateSourceFailures(discovery.sources);
 
       const promisingCandidates: NormalizedJob[] = [];
       for (const discoveredJob of discovery.jobs.slice(0, this.config.values.MAX_JOBS_PER_SCAN)) {
@@ -112,7 +162,7 @@ export class ScanPipeline {
       }
 
       const pendingStop = await this.drainPendingEvaluations(
-        runId,
+        logger,
         profile,
         feedback,
         summary,
@@ -120,7 +170,7 @@ export class ScanPipeline {
       );
       if (pendingStop === 'continue') {
         await this.evaluatePromisingJobs(
-          runId,
+          logger,
           promisingCandidates,
           profile,
           feedback,
@@ -128,7 +178,14 @@ export class ScanPipeline {
           deadline,
         );
       } else {
-        await this.deferJobs(runId, promisingCandidates, profile.version, pendingStop, summary);
+        summary.freshEvaluationSkipped = promisingCandidates.length > 0;
+        summary.freshEvaluationSkipReason = pendingStop;
+        logger.warn('fresh_evaluation_skipped', {
+          reason: pendingStop,
+          pendingBacklogConsumedBudget: true,
+          deferredFreshCandidates: promisingCandidates.length,
+        });
+        await this.deferJobs(logger, promisingCandidates, profile.version, pendingStop, summary);
       }
 
       for (const source of discovery.sources.filter(
@@ -140,12 +197,20 @@ export class ScanPipeline {
         await this.storage.markMissingExpired(source.companyId, seen);
       }
 
-      if (this.config.values.DRY_RUN) return summary;
+      if (summary.dryRun) {
+        summary.dryRunEmailSuppressed = summary.queued > 0;
+        summary.qualifyingWouldHaveEmailed = Math.min(
+          summary.queued,
+          this.config.values.DIGEST_LIMIT,
+        );
+        return summary;
+      }
       const batch = await this.storage.claimBatch(
         this.config.values.USER_ID,
         this.config.values.DIGEST_LIMIT,
       );
       if (!batch) return summary;
+      summary.qualifyingWouldHaveEmailed = batch.items.length;
       try {
         const messageId = await this.notifications.send(
           batch,
@@ -159,11 +224,27 @@ export class ScanPipeline {
       }
       return summary;
     } finally {
+      summary.scanCompletedAt = new Date().toISOString();
+      summary.scanDurationMs =
+        new Date(summary.scanCompletedAt).getTime() - new Date(scanStartedAt).getTime();
       if (!summary.skippedBecauseLocked) {
         await this.attachRunMetrics(summary);
         await this.storage.releaseLease(runId);
       }
+      logger.info('scan_completed', {
+        ...summary,
+        emailSuppressedBecauseDryRun: summary.dryRun && summary.queued > 0,
+      });
     }
+  }
+
+  private logDiscoverySources(
+    logger: ScanLogger,
+    marketplaceSources: readonly SourceHealth[],
+    companySources: readonly SourceHealth[],
+  ): void {
+    for (const source of marketplaceSources) logDiscoverySource(logger, source, 'marketplace');
+    for (const source of companySources) logDiscoverySource(logger, source, 'company');
   }
 
   private async attachRunMetrics(summary: ScanSummary): Promise<void> {
@@ -180,7 +261,7 @@ export class ScanPipeline {
   }
 
   private async drainPendingEvaluations(
-    runId: string,
+    logger: ScanLogger,
     profile: SearchProfile,
     feedback: UserFeedback[],
     summary: ScanSummary,
@@ -196,8 +277,9 @@ export class ScanPipeline {
         await this.storage.removePendingEvaluation(this.config.values.USER_ID, jobKey);
         continue;
       }
-      const outcome = await this.evaluateMatch(runId, match, profile, summary, {
+      const outcome = await this.evaluateMatch(logger, match, profile, summary, {
         deferOnError: false,
+        origin: 'pending_retry',
       });
       if (outcome === 'bedrock_cap') return 'bedrock_cap';
       if (outcome === 'deadline') return 'deadline';
@@ -209,7 +291,7 @@ export class ScanPipeline {
   }
 
   private async evaluatePromisingJobs(
-    runId: string,
+    logger: ScanLogger,
     jobs: readonly NormalizedJob[],
     profile: SearchProfile,
     feedback: UserFeedback[],
@@ -229,7 +311,9 @@ export class ScanPipeline {
       }
       const match = this.matching.evaluate(job, profile, feedback);
       if (!match.promising) continue;
-      const outcome = await this.evaluateMatch(runId, match, profile, summary);
+      const outcome = await this.evaluateMatch(logger, match, profile, summary, {
+        origin: 'fresh',
+      });
       if (outcome === 'bedrock_cap') {
         await this.deferRemaining(jobs, index, profile.version, 'bedrock_cap', summary);
         return;
@@ -242,23 +326,24 @@ export class ScanPipeline {
   }
 
   private async evaluateMatch(
-    runId: string,
+    logger: ScanLogger,
     match: ReturnType<MatchingService['evaluate']>,
     profile: SearchProfile,
     summary: ScanSummary,
-    options: { deferOnError?: boolean } = {},
+    options: { deferOnError?: boolean; origin: 'fresh' | 'pending_retry' },
   ): Promise<EvaluationStopReason> {
+    const jobKey = match.job.dedupeKey ?? match.job.canonicalId;
+    const threshold = this.config.values.SCORE_THRESHOLD;
     try {
       const evaluation = await this.evaluator.evaluate(match, profile);
       summary.evaluated += 1;
-      await this.queueIfQualifying(match, evaluation, summary);
+      await this.queueIfQualifying(logger, match, evaluation, summary, options.origin);
       return 'continue';
     } catch (error) {
       if (error instanceof Error && error.message === 'Per-scan Bedrock call cap reached') {
         return 'bedrock_cap';
       }
       const message = error instanceof Error ? error.message : String(error);
-      const jobKey = match.job.dedupeKey ?? match.job.canonicalId;
       if (options.deferOnError !== false) {
         await this.enqueueDeferred(
           match.job,
@@ -267,41 +352,85 @@ export class ScanPipeline {
           summary,
           message,
         );
+        logJobEvaluation(logger, {
+          job: match.job,
+          jobKey,
+          origin: options.origin,
+          preliminaryScore: match.preliminaryScore,
+          finalScore: match.score,
+          eligible: match.eligible,
+          remoteEligibility: match.remoteEligibility,
+          decision: 'deferred',
+          scoreThreshold: threshold,
+        });
       } else {
         await this.storage.recordPendingEvaluationFailure(
           this.config.values.USER_ID,
           jobKey,
           message,
         );
-      }
-      console.error(
-        JSON.stringify({
-          level: 'error',
-          runId,
-          event: 'evaluation_failed',
+        logJobEvaluation(logger, {
+          job: match.job,
           jobKey,
-          error: message,
-        }),
-      );
+          origin: options.origin,
+          preliminaryScore: match.preliminaryScore,
+          finalScore: match.score,
+          eligible: match.eligible,
+          remoteEligibility: match.remoteEligibility,
+          decision: 'failed',
+          scoreThreshold: threshold,
+        });
+      }
+      logger.error('evaluation_failed', { jobKey, error: message.slice(0, 500) });
       summary.evaluationsFailed += 1;
       return 'evaluation_failed';
     }
   }
 
   private async queueIfQualifying(
+    logger: ScanLogger,
     match: ReturnType<MatchingService['evaluate']>,
     evaluation: EvaluationRecord,
     summary: ScanSummary,
+    origin: 'fresh' | 'pending_retry',
   ): Promise<void> {
     const finalMatch = applyLlmEvaluation(match, evaluation.evaluation);
-    if (!finalMatch.eligible || finalMatch.score < this.config.values.SCORE_THRESHOLD) return;
-    if (await this.storage.queue(finalMatch, evaluation, this.config.values.USER_ID)) {
-      summary.queued += 1;
+    const jobKey = match.job.dedupeKey ?? match.job.canonicalId;
+    const threshold = this.config.values.SCORE_THRESHOLD;
+    let decision: EvaluationDecision;
+
+    if (!finalMatch.eligible) {
+      summary.eligibilityExcluded += 1;
+      decision = 'ineligible';
+    } else if (finalMatch.score < threshold) {
+      summary.belowThreshold += 1;
+      decision = 'below_threshold';
+    } else {
+      summary.scoredAtOrAboveThreshold += 1;
+      if (await this.storage.queue(finalMatch, evaluation, this.config.values.USER_ID)) {
+        summary.queued += 1;
+        decision = 'queued';
+      } else {
+        summary.alreadyQueued += 1;
+        decision = 'already_queued';
+      }
     }
+
+    logJobEvaluation(logger, {
+      job: match.job,
+      jobKey,
+      origin,
+      preliminaryScore: match.preliminaryScore,
+      finalScore: finalMatch.score,
+      eligible: finalMatch.eligible,
+      remoteEligibility: finalMatch.remoteEligibility,
+      decision,
+      scoreThreshold: threshold,
+    });
   }
 
   private async deferJobs(
-    runId: string,
+    logger: ScanLogger,
     jobs: readonly NormalizedJob[],
     profileVersion: string,
     reason: EvaluationStopReason,
@@ -312,15 +441,7 @@ export class ScanPipeline {
       await this.enqueueDeferred(job, profileVersion, label, summary);
     }
     if (jobs.length) {
-      console.warn(
-        JSON.stringify({
-          level: 'warn',
-          runId,
-          event: 'evaluation_deferred',
-          reason: label,
-          count: jobs.length,
-        }),
-      );
+      logger.warn('evaluation_deferred', { reason: label, count: jobs.length });
     }
   }
 

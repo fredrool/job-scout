@@ -145,6 +145,7 @@ export interface SourceHealth {
   latencyMs: number;
   jobsFound?: number;
   error?: string;
+  httpStatus?: number;
 }
 
 export interface DiscoveryResult {

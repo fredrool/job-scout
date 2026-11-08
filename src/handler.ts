@@ -16,7 +16,5 @@ async function context(): Promise<INestApplicationContext> {
 
 export const handler: Handler<ScheduledEvent, ScanSummary> = async () => {
   const app = await context();
-  const result = await app.get(ScanPipeline).run();
-  console.log(JSON.stringify({ level: 'info', event: 'scan_completed', ...result }));
-  return result;
+  return app.get(ScanPipeline).run();
 };

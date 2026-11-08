@@ -8,6 +8,7 @@ import type {
 import { JobBoardsRegistry, type MarketplaceBoardConfig } from './marketplace-config.js';
 import type { MarketplaceProvider } from './marketplace-providers.js';
 import type { JobStorage, ProviderState } from './storage.js';
+import { sanitizeDiscoveryError } from './scan-observability.js';
 
 export const MARKETPLACE_PROVIDERS = Symbol('MARKETPLACE_PROVIDERS');
 
@@ -112,19 +113,22 @@ export class MarketplaceDiscoveryService {
         },
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown marketplace error';
+      const sanitized = sanitizeDiscoveryError(error);
       const state: ProviderState = {
         provider: config.provider,
         lastFetchAt: fetchedAt,
         ...(previous?.lastSuccessAt ? { lastSuccessAt: previous.lastSuccessAt } : {}),
         status: 'FAILED',
         requestsMade: 0,
-        error: message,
+        error: sanitized.message,
       };
       await this.storage.putProviderState(state);
       return {
         jobs: [],
-        source: sourceHealth(config, false, false, started, 'FAILED', message),
+        source: {
+          ...sourceHealth(config, false, false, started, 'FAILED', sanitized.message),
+          ...(sanitized.httpStatus !== undefined ? { httpStatus: sanitized.httpStatus } : {}),
+        },
       };
     }
   }

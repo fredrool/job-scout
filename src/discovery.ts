@@ -8,6 +8,7 @@ import type {
 } from './domain.js';
 import { ConfigService } from './config.js';
 import { HttpClient } from './http-client.js';
+import { sanitizeDiscoveryError } from './scan-observability.js';
 import { normalizeJob, SourceUrlVerifier } from './normalization.js';
 import {
   AshbyProvider,
@@ -59,6 +60,7 @@ export class DiscoveryService {
           jobsFound: providerResult.jobs.length,
         });
       } catch (error) {
+        const sanitized = sanitizeDiscoveryError(error);
         sources.push({
           companyId: company.id,
           provider: company.provider,
@@ -68,7 +70,8 @@ export class DiscoveryService {
           status: 'FAILED',
           checkedAt: new Date().toISOString(),
           latencyMs: Date.now() - started,
-          error: error instanceof Error ? error.message : 'Unknown discovery error',
+          error: sanitized.message,
+          ...(sanitized.httpStatus !== undefined ? { httpStatus: sanitized.httpStatus } : {}),
         });
       }
     }
