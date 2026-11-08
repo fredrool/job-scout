@@ -10,6 +10,7 @@ import {
   type QueryCommandInput,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
+import type { AdzunaSearchCursor } from './adzuna-scheduler.js';
 import type { EvaluationCache, EvaluationRecord } from './ai.js';
 import type {
   MarketplaceProviderKind,
@@ -17,6 +18,17 @@ import type {
   NormalizedJob,
   UserFeedback,
 } from './domain.js';
+
+export interface PendingEvaluation {
+  userId: string;
+  jobKey: string;
+  profileVersion: string;
+  job: NormalizedJob;
+  createdAt: string;
+  attempts: number;
+  lastError?: string;
+  reason?: string;
+}
 
 export interface PendingNotification {
   userId: string;
@@ -43,6 +55,7 @@ export interface ProviderState {
   status: 'SUCCESS' | 'FAILED';
   requestsMade: number;
   error?: string;
+  adzunaCursor?: AdzunaSearchCursor;
 }
 
 export interface JobStorage extends EvaluationCache {
@@ -60,6 +73,15 @@ export interface JobStorage extends EvaluationCache {
   putFeedback(value: UserFeedback): Promise<void>;
   getProviderState(provider: MarketplaceProviderKind): Promise<ProviderState | undefined>;
   putProviderState(state: ProviderState): Promise<void>;
+  enqueuePendingEvaluation(
+    userId: string,
+    job: NormalizedJob,
+    profileVersion: string,
+    reason?: string,
+  ): Promise<void>;
+  listPendingEvaluations(userId: string, limit: number): Promise<PendingEvaluation[]>;
+  removePendingEvaluation(userId: string, jobKey: string): Promise<void>;
+  recordPendingEvaluationFailure(userId: string, jobKey: string, error: string): Promise<void>;
 }
 
 @Injectable()
@@ -366,6 +388,92 @@ export class DynamoJobStorage implements JobStorage {
     );
   }
 
+  async enqueuePendingEvaluation(
+    userId: string,
+    job: NormalizedJob,
+    profileVersion: string,
+    reason?: string,
+  ): Promise<void> {
+    const jobKey = job.dedupeKey ?? job.canonicalId;
+    const now = new Date().toISOString();
+    const existing = await this.document.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: { PK: `EVALPENDING#${userId}`, SK: jobKey },
+      }),
+    );
+    const prior = existing.Item as PendingEvaluation | undefined;
+    await this.document.send(
+      new PutCommand({
+        TableName: this.tableName,
+        Item: {
+          PK: `EVALPENDING#${userId}`,
+          SK: jobKey,
+          userId,
+          jobKey,
+          profileVersion,
+          job,
+          createdAt: prior?.createdAt ?? now,
+          attempts: prior?.attempts ?? 0,
+          ...(reason ? { reason } : {}),
+          GSI1PK: `EVALPENDING#${userId}`,
+          GSI1SK: prior?.createdAt ?? now,
+        },
+      }),
+    );
+  }
+
+  async listPendingEvaluations(userId: string, limit: number): Promise<PendingEvaluation[]> {
+    const items = await this.queryAll(
+      {
+        TableName: this.tableName,
+        IndexName: 'GSI1',
+        KeyConditionExpression: 'GSI1PK = :pending',
+        ExpressionAttributeValues: { ':pending': `EVALPENDING#${userId}` },
+      },
+      limit,
+    );
+    return items.map((item) => ({
+      userId: item.userId as string,
+      jobKey: item.jobKey as string,
+      profileVersion: item.profileVersion as string,
+      job: item.job as NormalizedJob,
+      createdAt: item.createdAt as string,
+      attempts: (item.attempts as number | undefined) ?? 0,
+      ...(item.lastError ? { lastError: item.lastError as string } : {}),
+      ...(item.reason ? { reason: item.reason as string } : {}),
+    }));
+  }
+
+  async removePendingEvaluation(userId: string, jobKey: string): Promise<void> {
+    await this.document.send(
+      new DeleteCommand({
+        TableName: this.tableName,
+        Key: { PK: `EVALPENDING#${userId}`, SK: jobKey },
+      }),
+    );
+  }
+
+  async recordPendingEvaluationFailure(
+    userId: string,
+    jobKey: string,
+    error: string,
+  ): Promise<void> {
+    await this.document.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: { PK: `EVALPENDING#${userId}`, SK: jobKey },
+        UpdateExpression:
+          'SET attempts = if_not_exists(attempts, :zero) + :one, lastError = :error',
+        ExpressionAttributeValues: {
+          ':zero': 0,
+          ':one': 1,
+          ':error': error.slice(0, 500),
+        },
+      }),
+    );
+  }
+
   private async queryAll(
     input: QueryCommandInput,
     maximumItems?: number,
@@ -465,6 +573,11 @@ export class MemoryJobStorage implements JobStorage {
   private readonly pending = new Map<string, PendingNotification>();
   private readonly feedbackItems: UserFeedback[] = [];
   private readonly providerStates = new Map<MarketplaceProviderKind, ProviderState>();
+  private readonly pendingEvaluations = new Map<string, PendingEvaluation>();
+
+  private pendingEvalKey(userId: string, jobKey: string): string {
+    return `${userId}#${jobKey}`;
+  }
 
   acquireLease(owner: string, ttlSeconds: number): Promise<boolean> {
     if (this.lease && this.lease.expiresAt > Date.now()) return Promise.resolve(false);
@@ -557,6 +670,50 @@ export class MemoryJobStorage implements JobStorage {
   }
   putProviderState(state: ProviderState): Promise<void> {
     this.providerStates.set(state.provider, state);
+    return Promise.resolve();
+  }
+  enqueuePendingEvaluation(
+    userId: string,
+    job: NormalizedJob,
+    profileVersion: string,
+    reason?: string,
+  ): Promise<void> {
+    const jobKey = job.dedupeKey ?? job.canonicalId;
+    const key = this.pendingEvalKey(userId, jobKey);
+    const prior = this.pendingEvaluations.get(key);
+    const createdAt = prior?.createdAt ?? new Date().toISOString();
+    this.pendingEvaluations.set(key, {
+      userId,
+      jobKey,
+      profileVersion,
+      job,
+      createdAt,
+      attempts: prior?.attempts ?? 0,
+      ...(reason ? { reason } : {}),
+    });
+    return Promise.resolve();
+  }
+  listPendingEvaluations(userId: string, limit: number): Promise<PendingEvaluation[]> {
+    return Promise.resolve(
+      [...this.pendingEvaluations.values()]
+        .filter((item) => item.userId === userId)
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        .slice(0, limit),
+    );
+  }
+  removePendingEvaluation(userId: string, jobKey: string): Promise<void> {
+    this.pendingEvaluations.delete(this.pendingEvalKey(userId, jobKey));
+    return Promise.resolve();
+  }
+  recordPendingEvaluationFailure(userId: string, jobKey: string, error: string): Promise<void> {
+    const key = this.pendingEvalKey(userId, jobKey);
+    const prior = this.pendingEvaluations.get(key);
+    if (!prior) return Promise.resolve();
+    this.pendingEvaluations.set(key, {
+      ...prior,
+      attempts: prior.attempts + 1,
+      lastError: error.slice(0, 500),
+    });
     return Promise.resolve();
   }
 }

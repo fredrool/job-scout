@@ -10,12 +10,18 @@ import type {
   RemotiveBoardConfig,
 } from './marketplace-config.js';
 import { createDedupeKey } from './normalization.js';
+import { planAdzunaRequests, type AdzunaSearchCursor } from './adzuna-scheduler.js';
+
+export interface MarketplaceFetchContext {
+  adzunaCursor?: AdzunaSearchCursor;
+}
 
 export interface MarketplaceFetchResult {
   jobs: NormalizedJob[];
   complete: boolean;
   requestsMade: number;
   attribution: string;
+  nextAdzunaCursor?: AdzunaSearchCursor;
 }
 
 export interface MarketplaceProvider<
@@ -25,6 +31,7 @@ export interface MarketplaceProvider<
   fetch(
     config: TConfig,
     credentials: Readonly<Record<string, string>>,
+    context?: MarketplaceFetchContext,
   ): Promise<MarketplaceFetchResult>;
 }
 
@@ -53,58 +60,53 @@ export class AdzunaMarketplaceProvider implements MarketplaceProvider<AdzunaBoar
   async fetch(
     config: AdzunaBoardConfig,
     credentials: Readonly<Record<string, string>>,
+    context: MarketplaceFetchContext = {},
   ): Promise<MarketplaceFetchResult> {
     const appId = credentials[config.appIdEnv];
     const appKey = credentials[config.appKeyEnv];
     if (!appId || !appKey) throw new Error('Adzuna credentials are not configured');
     const jobs = new Map<string, NormalizedJob>();
+    const { requests, nextCursor } = planAdzunaRequests(
+      config,
+      context.adzunaCursor ?? { combinationIndex: 0, page: 1 },
+    );
     let requestsMade = 0;
-    let complete = true;
-    outer: for (const country of config.countries) {
-      for (const query of config.searchQueries) {
-        for (let page = 1; page <= config.maxPagesPerQuery; page += 1) {
-          if (requestsMade >= config.maxRequestsPerPoll) {
-            complete = false;
-            break outer;
-          }
-          const url = new URL(
-            `https://api.adzuna.com/v1/api/jobs/${encodeURIComponent(country)}/search/${String(page)}`,
-          );
-          url.searchParams.set('app_id', appId);
-          url.searchParams.set('app_key', appKey);
-          url.searchParams.set('results_per_page', String(config.resultsPerPage));
-          url.searchParams.set('what', query);
-          url.searchParams.set('sort_by', 'date');
-          url.searchParams.set('content-type', 'application/json');
-          const response = adzunaResponseSchema.parse(await this.http.getJson<unknown>(url.href));
-          requestsMade += 1;
-          for (const result of response.results) {
-            const normalized = marketplaceJob({
-              provider: this.kind,
-              externalId: String(result.id),
-              title: result.title,
-              companyName: result.company?.display_name ?? 'Unknown employer',
-              location: result.location?.display_name ?? null,
-              description: result.description ?? null,
-              listingUrl: result.redirect_url,
-              ...(result.created ? { publishedAt: result.created } : {}),
-              salaryText: salaryText(
-                result.salary_min,
-                result.salary_max,
-                result.salary_is_predicted,
-              ),
-              sourceName: 'Adzuna',
-            });
-            jobs.set(normalized.dedupeKey ?? normalized.canonicalId, normalized);
-          }
-          const fetchedThrough = page * config.resultsPerPage;
-          if (response.results.length < config.resultsPerPage || fetchedThrough >= response.count)
-            break;
-          if (page === config.maxPagesPerQuery) complete = false;
-        }
+    for (const slot of requests) {
+      const url = new URL(
+        `https://api.adzuna.com/v1/api/jobs/${encodeURIComponent(slot.country)}/search/${String(slot.page)}`,
+      );
+      url.searchParams.set('app_id', appId);
+      url.searchParams.set('app_key', appKey);
+      url.searchParams.set('results_per_page', String(config.resultsPerPage));
+      url.searchParams.set('what', slot.query);
+      url.searchParams.set('sort_by', 'date');
+      url.searchParams.set('content-type', 'application/json');
+      const response = adzunaResponseSchema.parse(await this.http.getJson<unknown>(url.href));
+      requestsMade += 1;
+      for (const result of response.results) {
+        const normalized = marketplaceJob({
+          provider: this.kind,
+          externalId: String(result.id),
+          title: result.title,
+          companyName: result.company?.display_name ?? 'Unknown employer',
+          location: result.location?.display_name ?? null,
+          description: result.description ?? null,
+          listingUrl: result.redirect_url,
+          ...(result.created ? { publishedAt: result.created } : {}),
+          salaryText: salaryText(result.salary_min, result.salary_max, result.salary_is_predicted),
+          sourceName: 'Adzuna',
+        });
+        jobs.set(normalized.dedupeKey ?? normalized.canonicalId, normalized);
       }
     }
-    return { jobs: [...jobs.values()], complete, requestsMade, attribution: 'Jobs by Adzuna' };
+    const complete = !requests.length || requestsMade < config.maxRequestsPerPoll;
+    return {
+      jobs: [...jobs.values()],
+      complete,
+      requestsMade,
+      attribution: 'Jobs by Adzuna',
+      nextAdzunaCursor: nextCursor,
+    };
   }
 }
 
@@ -129,7 +131,11 @@ export class RemotiveMarketplaceProvider implements MarketplaceProvider<Remotive
   readonly kind = 'remotive' as const;
   constructor(private readonly http: HttpClient) {}
 
-  async fetch(config: RemotiveBoardConfig): Promise<MarketplaceFetchResult> {
+  async fetch(
+    config: RemotiveBoardConfig,
+    _credentials: Readonly<Record<string, string>> = {},
+    _context: MarketplaceFetchContext = {},
+  ): Promise<MarketplaceFetchResult> {
     const url = new URL('https://remotive.com/api/remote-jobs');
     url.searchParams.set('category', config.category);
     const response = remotiveResponseSchema.parse(await this.http.getJson<unknown>(url.href));
@@ -179,6 +185,7 @@ export class JoobleMarketplaceProvider implements MarketplaceProvider<JoobleBoar
   async fetch(
     config: JoobleBoardConfig,
     credentials: Readonly<Record<string, string>>,
+    _context: MarketplaceFetchContext = {},
   ): Promise<MarketplaceFetchResult> {
     const key = credentials[config.apiKeyEnv];
     if (!key) throw new Error('Jooble API key is not configured');

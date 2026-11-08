@@ -88,13 +88,20 @@ export class MarketplaceDiscoveryService {
     }
     const fetchedAt = new Date().toISOString();
     try {
-      const result = await provider.fetch(config, process.env as Readonly<Record<string, string>>);
+      const result = await provider.fetch(config, process.env as Readonly<Record<string, string>>, {
+        ...(config.provider === 'adzuna' && previous?.adzunaCursor
+          ? { adzunaCursor: previous.adzunaCursor }
+          : {}),
+      });
       await this.storage.putProviderState({
         provider: config.provider,
         lastFetchAt: fetchedAt,
         lastSuccessAt: fetchedAt,
         status: 'SUCCESS',
         requestsMade: result.requestsMade,
+        ...(config.provider === 'adzuna' && result.nextAdzunaCursor
+          ? { adzunaCursor: result.nextAdzunaCursor }
+          : {}),
       });
       return {
         jobs: result.jobs,

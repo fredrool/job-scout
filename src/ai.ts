@@ -51,6 +51,10 @@ export class BedrockEvaluator {
     this.calls = 0;
   }
 
+  hasCapacity(): boolean {
+    return this.calls < this.config.values.MAX_BEDROCK_CALLS_PER_SCAN;
+  }
+
   async evaluate(match: MatchResult, profile: SearchProfile): Promise<EvaluationRecord> {
     const key = createHash('sha256')
       .update(

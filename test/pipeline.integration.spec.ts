@@ -98,6 +98,7 @@ describe('ScanPipeline integration', () => {
     });
     const evaluator = {
       resetRun: vi.fn(),
+      hasCapacity: vi.fn(() => true),
       evaluate,
     } as unknown as BedrockEvaluator;
     const send = vi.fn().mockResolvedValue('ses-id');
@@ -172,7 +173,11 @@ describe('ScanPipeline integration', () => {
         }),
       } as unknown as MarketplaceDiscoveryService,
       new MatchingService(),
-      { resetRun: vi.fn(), evaluate: vi.fn() } as unknown as BedrockEvaluator,
+      {
+        resetRun: vi.fn(),
+        hasCapacity: vi.fn(() => true),
+        evaluate: vi.fn(),
+      } as unknown as BedrockEvaluator,
       storage,
       { send: vi.fn() } as unknown as SesNotificationService,
     );

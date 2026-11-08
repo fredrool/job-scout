@@ -139,12 +139,7 @@ export interface SourceHealth {
   healthy: boolean;
   complete: boolean;
   authoritativeForExpiration?: boolean;
-  status?:
-    | 'FETCHED'
-    | 'SKIPPED_INTERVAL'
-    | 'SKIPPED_MOCK'
-    | 'MISSING_CREDENTIALS'
-    | 'FAILED';
+  status?: 'FETCHED' | 'SKIPPED_INTERVAL' | 'SKIPPED_MOCK' | 'MISSING_CREDENTIALS' | 'FAILED';
   requestsMade?: number;
   checkedAt: string;
   latencyMs: number;
