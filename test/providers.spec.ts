@@ -48,9 +48,11 @@ describe('hosted ATS providers', () => {
     ['ashby', AshbyProvider, 'ashby.json', 'ashby-301'],
   ] as const)('maps a %s response', async (kind, Provider, filename, expectedId) => {
     const adapter = new Provider(new FixtureHttpClient(await fixture(filename)));
-    const jobs = await adapter.fetchJobs(hostedCompany(kind));
+    const result = await adapter.fetchJobs(hostedCompany(kind));
+    const jobs = result.jobs;
 
     expect(jobs).toHaveLength(1);
+    expect(result.complete).toBe(true);
     expect(jobs[0]).toMatchObject({ externalId: expectedId });
     expect(jobs[0]?.applyUrl).toMatch(/^https:/);
   });
@@ -61,7 +63,7 @@ describe('configurable JSON provider', () => {
     const adapter = new JsonFeedProvider(
       new FixtureHttpClient(await fixture('official-feed.json')),
     );
-    const jobs = await adapter.fetchJobs({
+    const result = await adapter.fetchJobs({
       id: 'example-json',
       name: 'Example Feed Company',
       enabled: true,
@@ -80,7 +82,8 @@ describe('configurable JSON provider', () => {
       },
     });
 
-    expect(jobs).toEqual([
+    expect(result.complete).toBe(true);
+    expect(result.jobs).toEqual([
       {
         externalId: '401',
         title: 'Data Engineer',

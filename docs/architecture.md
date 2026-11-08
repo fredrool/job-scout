@@ -9,15 +9,19 @@
    entries, is a valid no-op and yields no jobs.
 3. Collectors fetch job listings, verify official HTTP(S) source URLs, and
    normalize stable identifiers and content hashes.
-4. Deterministic filters classify Quebec eligibility as `CONFIRMED`,
-   `POSSIBLE`, or `INELIGIBLE`, reject ineligible jobs, and compute an
-   explainable weighted score. Only plausible candidates reach Bedrock.
+4. A permissive deterministic prefilter classifies eligibility as `CONFIRMED`,
+   `POSSIBLE`, or `INELIGIBLE`, rejects only hard exclusions, and estimates
+   role, skill importance, proficiency, requirement level, and transferable
+   experience. `POSSIBLE` remote jobs receive no geographic score penalty and
+   carry an explicit verification warning.
 5. DynamoDB provides deduplication, run state, and query access through one
    table with `PK`/`SK` and three sparse GSIs for status/pending claims,
    company/discovery time, and user score.
-6. Bedrock Converse evaluates candidates through the US cross-region
+6. Bedrock Converse evaluates promising candidates through the US cross-region
    inference profile
-   `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
+   `us.anthropic.claude-haiku-4-5-20251001-v1:0`. Its validated fit score is
+   combined with the preliminary score; the notification threshold applies
+   only to that final score.
 7. Qualifying versions become durable pending notification records. A
    conditional batch claim sends up to the configured digest limit; overflow
    remains pending for a later run.

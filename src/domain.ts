@@ -62,6 +62,7 @@ export const profileSchema = z
           name: z.string().min(1),
           proficiency: z.enum(['expert', 'advanced', 'proficient', 'learning']),
           evidence: z.string().min(1),
+          importance: z.enum(['core', 'supporting', 'interest']).optional(),
         }),
       )
       .default([]),
@@ -119,6 +120,7 @@ export interface SourceHealth {
   companyId: string;
   provider: ProviderKind;
   healthy: boolean;
+  complete: boolean;
   checkedAt: string;
   latencyMs: number;
   jobsFound?: number;
@@ -162,12 +164,14 @@ export interface ScoreBreakdown {
 export interface MatchResult {
   job: NormalizedJob;
   score: number;
+  preliminaryScore: number;
   breakdown: ScoreBreakdown;
   remoteEligibility: RemoteEligibility;
   reasons: string[];
   gaps: string[];
   salary: string | null;
   eligible: boolean;
+  promising: boolean;
 }
 
 export const llmEvaluationSchema = z
@@ -177,6 +181,7 @@ export const llmEvaluationSchema = z
     mustHaveGaps: z.array(z.string()),
     remoteEligibility: remoteEligibilitySchema,
     legitimacySignals: z.array(z.string()),
+    fitScore: z.number().min(0).max(100),
     confidence: z.number().min(0).max(1),
     recommendation: z.string().min(1).max(800),
   })

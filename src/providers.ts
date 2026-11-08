@@ -5,7 +5,7 @@ import { HttpClient } from './http-client.js';
 
 export interface JobProvider {
   readonly kind: ProviderKind;
-  fetchJobs(company: Company): Promise<ProviderJob[]>;
+  fetchJobs(company: Company): Promise<{ jobs: ProviderJob[]; complete: boolean }>;
 }
 
 const greenhouseResponseSchema = z.object({
@@ -26,22 +26,25 @@ export class GreenhouseProvider implements JobProvider {
   readonly kind = 'greenhouse' as const;
   constructor(private readonly http: HttpClient) {}
 
-  async fetchJobs(company: Company): Promise<ProviderJob[]> {
+  async fetchJobs(company: Company): Promise<{ jobs: ProviderJob[]; complete: boolean }> {
     const token = requireBoardToken(company, this.kind);
     const data = greenhouseResponseSchema.parse(
       await this.http.getJson<unknown>(
         `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(token)}/jobs?content=true`,
       ),
     );
-    return data.jobs.map((job) => ({
-      externalId: String(job.id),
-      title: job.title,
-      applyUrl: job.absolute_url,
-      sourceUrl: job.absolute_url,
-      ...(job.location ? { location: job.location.name } : {}),
-      ...(job.content ? { description: job.content } : {}),
-      ...(job.updated_at ? { updatedAt: job.updated_at } : {}),
-    }));
+    return {
+      complete: true,
+      jobs: data.jobs.map((job) => ({
+        externalId: String(job.id),
+        title: job.title,
+        applyUrl: job.absolute_url,
+        sourceUrl: job.absolute_url,
+        ...(job.location ? { location: job.location.name } : {}),
+        ...(job.content ? { description: job.content } : {}),
+        ...(job.updated_at ? { updatedAt: job.updated_at } : {}),
+      })),
+    };
   }
 }
 
@@ -62,22 +65,25 @@ export class LeverProvider implements JobProvider {
   readonly kind = 'lever' as const;
   constructor(private readonly http: HttpClient) {}
 
-  async fetchJobs(company: Company): Promise<ProviderJob[]> {
+  async fetchJobs(company: Company): Promise<{ jobs: ProviderJob[]; complete: boolean }> {
     const token = requireBoardToken(company, this.kind);
     const jobs = leverResponseSchema.parse(
       await this.http.getJson<unknown>(
         `https://api.lever.co/v0/postings/${encodeURIComponent(token)}?mode=json`,
       ),
     );
-    return jobs.map((job) => ({
-      externalId: job.id,
-      title: job.text,
-      applyUrl: job.applyUrl ?? job.hostedUrl,
-      sourceUrl: job.hostedUrl,
-      ...(job.categories?.location ? { location: job.categories.location } : {}),
-      ...(job.descriptionPlain ? { description: job.descriptionPlain } : {}),
-      ...(job.createdAt ? { updatedAt: new Date(job.createdAt).toISOString() } : {}),
-    }));
+    return {
+      complete: true,
+      jobs: jobs.map((job) => ({
+        externalId: job.id,
+        title: job.text,
+        applyUrl: job.applyUrl ?? job.hostedUrl,
+        sourceUrl: job.hostedUrl,
+        ...(job.categories?.location ? { location: job.categories.location } : {}),
+        ...(job.descriptionPlain ? { description: job.descriptionPlain } : {}),
+        ...(job.createdAt ? { updatedAt: new Date(job.createdAt).toISOString() } : {}),
+      })),
+    };
   }
 }
 
@@ -100,22 +106,25 @@ export class AshbyProvider implements JobProvider {
   readonly kind = 'ashby' as const;
   constructor(private readonly http: HttpClient) {}
 
-  async fetchJobs(company: Company): Promise<ProviderJob[]> {
+  async fetchJobs(company: Company): Promise<{ jobs: ProviderJob[]; complete: boolean }> {
     const token = requireBoardToken(company, this.kind);
     const data = ashbyResponseSchema.parse(
       await this.http.getJson<unknown>(
         `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(token)}`,
       ),
     );
-    return data.jobs.map((job) => ({
-      externalId: job.id,
-      title: job.title,
-      applyUrl: job.applyUrl ?? job.jobUrl,
-      sourceUrl: job.jobUrl,
-      ...(job.location ? { location: job.location } : {}),
-      ...(job.descriptionHtml ? { description: job.descriptionHtml } : {}),
-      ...(job.publishedAt ? { updatedAt: job.publishedAt } : {}),
-    }));
+    return {
+      complete: true,
+      jobs: data.jobs.map((job) => ({
+        externalId: job.id,
+        title: job.title,
+        applyUrl: job.applyUrl ?? job.jobUrl,
+        sourceUrl: job.jobUrl,
+        ...(job.location ? { location: job.location } : {}),
+        ...(job.descriptionHtml ? { description: job.descriptionHtml } : {}),
+        ...(job.publishedAt ? { updatedAt: job.publishedAt } : {}),
+      })),
+    };
   }
 }
 
@@ -124,7 +133,7 @@ export class JsonFeedProvider implements JobProvider {
   readonly kind = 'json' as const;
   constructor(private readonly http: HttpClient) {}
 
-  async fetchJobs(company: Company): Promise<ProviderJob[]> {
+  async fetchJobs(company: Company): Promise<{ jobs: ProviderJob[]; complete: boolean }> {
     if (!company.feedUrl || !company.feedMapping) {
       throw new Error(`Company ${company.id} has incomplete JSON feed configuration`);
     }
@@ -132,7 +141,7 @@ export class JsonFeedProvider implements JobProvider {
     const payload = await this.http.getJson<unknown>(company.feedUrl);
     const jobs = mapping.jobsPath ? readPath(payload, mapping.jobsPath) : payload;
     if (!Array.isArray(jobs)) throw new Error('Configured jobs path does not resolve to an array');
-    return jobs.map((job, index) => this.mapJob(job, index, mapping));
+    return { jobs: jobs.map((job, index) => this.mapJob(job, index, mapping)), complete: true };
   }
 
   private mapJob(job: unknown, index: number, mapping: JsonFeedMapping): ProviderJob {

@@ -9,13 +9,18 @@ import { ScanPipeline } from './pipeline.js';
 import { CompanyRegistry } from './registry.js';
 import type { JobStorage } from './storage.js';
 import { ConfigService } from './config.js';
+import { DiscoveryService } from './discovery.js';
 
 const usageText = [
   'Usage:',
   '  npm run cli -- scan [dry-run]',
   '  npm run cli -- companies validate [path]',
+  '  npm run cli -- companies list',
   '  npm run cli -- companies discover <company-name> <https-careers-url>',
   '  npm run cli -- companies add <id> <name> <provider> <careers-url> <board-token>',
+  '  npm run cli -- companies add-file <company-yaml-or-json>',
+  '  npm run cli -- companies enable|disable <id>',
+  '  npm run cli -- companies health',
   '  npm run cli -- feedback <canonical-id> <interested|applied|rejected|interviewing|offered|closed> [reason]',
 ].join('\n');
 
@@ -43,6 +48,27 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(registry.candidateFromCareersUrl(name, url), null, 2));
     return;
   }
+  if (command === 'companies' && action === 'list') {
+    const current = await registry.load();
+    console.log(
+      JSON.stringify(
+        {
+          active: current.companies.filter((company) => company.enabled).length,
+          sources: current.companies.map(({ id, name, provider, careersUrl, enabled }) => ({
+            id,
+            name,
+            provider,
+            careersUrl,
+            enabled,
+            status: enabled ? 'ACTIVE_NOT_PROBED' : 'DISABLED',
+          })),
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
   if (command === 'companies' && action === 'add') {
     const [, , id, name, provider, careersUrl, boardToken] = args;
     if (!id || !name || !provider || !careersUrl || !boardToken) usage();
@@ -58,11 +84,42 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({ added: id, enabled: false }, null, 2));
     return;
   }
+  if (command === 'companies' && action === 'add-file') {
+    const path = args[2];
+    if (!path) usage();
+    const company = companySchema.parse(parse(await readFile(path, 'utf8')));
+    await registry.add(company);
+    console.log(JSON.stringify({ added: company.id, enabled: false }, null, 2));
+    return;
+  }
+  if (command === 'companies' && (action === 'enable' || action === 'disable')) {
+    const id = args[2];
+    if (!id) usage();
+    await registry.setEnabled(id, action === 'enable');
+    console.log(JSON.stringify({ id, enabled: action === 'enable' }, null, 2));
+    return;
+  }
   if (args.includes('--dry-run') || args.includes('dry-run')) process.env.DRY_RUN = 'true';
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
   try {
     if (command === 'scan') {
       console.log(JSON.stringify(await app.get(ScanPipeline).run(), null, 2));
+      return;
+    }
+    if (command === 'companies' && action === 'health') {
+      const configured = await app.get(CompanyRegistry).load();
+      const result = await app.get(DiscoveryService).discover(configured);
+      console.log(
+        JSON.stringify(
+          {
+            activeSources: configured.companies.filter((company) => company.enabled).length,
+            checkedAt: result.completedAt,
+            sources: result.sources,
+          },
+          null,
+          2,
+        ),
+      );
       return;
     }
     if (command === 'feedback') {

@@ -9,12 +9,18 @@ Treat the company registry as an allowlist:
 2. Add the company disabled.
 3. Validate parsing against saved fixtures or an explicitly authorized local
    request. Never bypass access controls, CAPTCHAs, or site rate limits.
-4. Obtain owner approval and enable the company in a second reviewed change.
-5. Watch the first run's logs and disable the company on repeated errors,
+4. Run `npm run cli -- companies list`, then explicitly probe approved enabled
+   boards with `npm run cli -- companies health`.
+5. Obtain owner approval and enable the company in a second reviewed change.
+6. Watch the first run's logs and disable the company on repeated errors,
    unexpected volume, site changes, or a removal request.
 
 An empty registry and a registry with every company disabled must return no
 jobs and send no job digest; this is the safe initial state.
+
+The built-in URL recognizer does not search the web or automatically discover
+new employers. Automatic employer discovery requires a separately configured,
+legitimate `CompanyDiscoverySource`; every candidate still requires review.
 
 ## Pre-deployment checklist
 

@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from './config.js';
 import { DiscoveryService } from './discovery.js';
 import { BedrockEvaluator } from './ai.js';
-import { MatchingService } from './matching.js';
+import { applyLlmEvaluation, MatchingService } from './matching.js';
 import { CompanyRegistry } from './registry.js';
 import type { JobStorage } from './storage.js';
 import { SesNotificationService } from './notifications.js';
@@ -73,12 +73,15 @@ export class ScanPipeline {
         const change = await this.storage.upsertJob(job);
         if (!change.isNew && !change.materiallyChanged) continue;
         const match = this.matching.evaluate(job, profile, feedback);
-        if (!match.eligible || match.score < this.config.values.SCORE_THRESHOLD) continue;
+        if (!match.promising) continue;
         try {
           const evaluation = await this.evaluator.evaluate(match, profile);
           summary.evaluated += 1;
-          if (evaluation.evaluation.remoteEligibility === 'INELIGIBLE') continue;
-          if (await this.storage.queue(match, evaluation, this.config.values.USER_ID)) {
+          const finalMatch = applyLlmEvaluation(match, evaluation.evaluation);
+          if (!finalMatch.eligible || finalMatch.score < this.config.values.SCORE_THRESHOLD) {
+            continue;
+          }
+          if (await this.storage.queue(finalMatch, evaluation, this.config.values.USER_ID)) {
             summary.queued += 1;
           }
         } catch (error) {
@@ -96,7 +99,7 @@ export class ScanPipeline {
         }
       }
 
-      for (const source of discovery.sources.filter((item) => item.healthy)) {
+      for (const source of discovery.sources.filter((item) => item.healthy && item.complete)) {
         const seen = discovery.jobs
           .filter((job) => job.companyId === source.companyId)
           .map((job) => job.canonicalId);

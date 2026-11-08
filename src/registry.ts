@@ -64,6 +64,20 @@ export class CompanyRegistry {
     return updated;
   }
 
+  async setEnabled(companyId: string, enabled: boolean): Promise<CompanyRegistryDocument> {
+    const current = await this.load();
+    if (!current.companies.some((company) => company.id === companyId)) {
+      throw new Error(`Unknown company id "${companyId}"`);
+    }
+    const updated = this.validate({
+      companies: current.companies.map((company) =>
+        company.id === companyId ? { ...company, enabled } : company,
+      ),
+    });
+    await this.writeAtomically(updated);
+    return updated;
+  }
+
   candidate(input: unknown): DiscoveryCandidate {
     return discoveryCandidateSchema.parse(input);
   }

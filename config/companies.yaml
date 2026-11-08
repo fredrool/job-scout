@@ -1,34 +1,38 @@
+# Job Scout curated ATS registry — 2026-11-08
+# Boards are enabled for scanning; individual roles still require remote/Canada checks.
+# A board's existence does not imply every vacancy is eligible from Quebec.
 companies:
-  - id: example-greenhouse
-    name: Example Greenhouse Company
-    enabled: false
-    careersUrl: https://boards.greenhouse.io/example
-    provider: greenhouse
-    boardToken: example
-  - id: example-lever
-    name: Example Lever Company
-    enabled: false
-    careersUrl: https://jobs.lever.co/example
-    provider: lever
-    boardToken: example
-  - id: example-ashby
-    name: Example Ashby Company
-    enabled: false
-    careersUrl: https://jobs.ashbyhq.com/example
+  - id: nango
+    name: Nango
+    enabled: true
+    careersUrl: https://jobs.ashbyhq.com/nango
     provider: ashby
-    boardToken: example
-  - id: example-json
-    name: Example Official Feed Company
-    enabled: false
-    careersUrl: https://careers.example.com/jobs
-    provider: json
-    feedUrl: https://careers.example.com/jobs.json
-    feedMapping:
-      jobsPath: results
-      id: id
-      title: title
-      applyUrl: links.apply
-      sourceUrl: links.details
-      location: location.name
-      description: description
-      updatedAt: updated_at
+    boardToken: nango
+
+  - id: linear
+    name: Linear
+    enabled: true
+    careersUrl: https://jobs.ashbyhq.com/linear
+    provider: ashby
+    boardToken: linear
+
+  - id: ashby
+    name: Ashby
+    enabled: true
+    careersUrl: https://jobs.ashbyhq.com/ashby
+    provider: ashby
+    boardToken: ashby
+
+  - id: plotly
+    name: Plotly
+    enabled: true
+    careersUrl: https://jobs.ashbyhq.com/plotly
+    provider: ashby
+    boardToken: plotly
+
+  - id: reflow
+    name: Reflow
+    enabled: true
+    careersUrl: https://jobs.ashbyhq.com/reflow
+    provider: ashby
+    boardToken: reflow

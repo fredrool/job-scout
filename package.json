@@ -10,14 +10,14 @@
   "main": "dist/handler.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "bundle": "esbuild src/handler.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/lambda/index.js --sourcemap --external:@aws-sdk/* --external:@nestjs/microservices --external:@nestjs/platform-express --external:@nestjs/websockets --external:class-validator --external:class-transformer && node scripts/prepare-lambda.mjs",
+    "bundle": "esbuild src/handler.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/lambda/index.js --sourcemap --external:@nestjs/microservices --external:@nestjs/platform-express --external:@nestjs/websockets --external:class-validator --external:class-transformer && node scripts/prepare-lambda.mjs",
     "cli": "tsx src/cli.ts",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "test": "vitest run",
-    "package": "npm run build && npm run bundle && node scripts/package-lambda.mjs",
+    "package": "npm run build && npm run bundle && node scripts/package-lambda.mjs && node scripts/verify-lambda-artifact.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },

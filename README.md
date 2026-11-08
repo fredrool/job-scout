@@ -33,15 +33,25 @@ read from the profile. Useful local commands:
 
 ```sh
 npm run cli -- companies validate
+npm run cli -- companies list
 npm run cli -- companies discover "Example Inc" https://jobs.example.com
 npm run cli -- companies add example-inc "Example Inc" greenhouse https://boards.greenhouse.io/example example
+npm run cli -- companies add-file company.yaml
+npm run cli -- companies enable example-inc
+npm run cli -- companies health
 npm run cli -- scan dry-run
 npm run cli -- feedback JOB_ID interested
 ```
 
 New companies are always added disabled. Review terms, ownership, board token,
-and a fixture before enabling one in `config/companies.yaml`. The discovery
-command only proposes evidence; it never enrolls a source.
+and a fixture before enabling one. `companies list` reports configured active
+sources without network access; `companies health` explicitly probes enabled
+boards and reports completeness, latency, job count, and errors.
+
+The built-in `companies discover` command recognizes a career URL supplied by
+the operator. Job Scout cannot automatically find new employers unless a
+legitimate search provider implementing `CompanyDiscoverySource` is configured.
+Discovery candidates always require manual approval and are never auto-enabled.
 
 The packaging command must produce
 `.artifacts/job-scout-lambda.zip`. `scripts/package-lambda.mjs` is the

@@ -7,6 +7,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  type QueryCommandInput,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type { EvaluationCache, EvaluationRecord } from './ai.js';
@@ -43,17 +44,30 @@ export interface JobStorage extends EvaluationCache {
   putFeedback(value: UserFeedback): Promise<void>;
 }
 
+interface StoredJobShape {
+  contentHash?: string;
+  status?: 'ACTIVE' | 'EXPIRED' | 'REOPENED';
+  title?: string;
+  location?: string | null;
+  description?: string | null;
+  applyUrl?: string;
+  sourceUrl?: string;
+}
+
 @Injectable()
 export class DynamoJobStorage implements JobStorage {
   private readonly document: DynamoDBDocumentClient;
 
   constructor(
     private readonly tableName: string,
-    client = new DynamoDBClient({}),
+    client: DynamoDBClient = new DynamoDBClient({}),
+    documentClient?: DynamoDBDocumentClient,
   ) {
-    this.document = DynamoDBDocumentClient.from(client, {
-      marshallOptions: { removeUndefinedValues: true },
-    });
+    this.document =
+      documentClient ??
+      DynamoDBDocumentClient.from(client, {
+        marshallOptions: { removeUndefinedValues: true },
+      });
   }
 
   async acquireLease(owner: string, ttlSeconds: number): Promise<boolean> {
@@ -92,7 +106,7 @@ export class DynamoJobStorage implements JobStorage {
   async upsertJob(job: NormalizedJob): Promise<{ isNew: boolean; materiallyChanged: boolean }> {
     const key = { PK: `JOB#${job.provider}#${job.canonicalId}`, SK: 'JOB' };
     const prior = await this.document.send(new GetCommand({ TableName: this.tableName, Key: key }));
-    const previous = prior.Item as { contentHash?: string; status?: string } | undefined;
+    const previous = prior.Item as StoredJobShape | undefined;
     const now = new Date().toISOString();
     const reopened = previous?.status === 'EXPIRED';
     await this.document.send(
@@ -113,7 +127,7 @@ export class DynamoJobStorage implements JobStorage {
     );
     return {
       isNew: !previous,
-      materiallyChanged: Boolean(previous && previous.contentHash !== job.contentHash),
+      materiallyChanged: Boolean(previous && isMaterialJobChange(previous, job)),
     };
   }
 
@@ -122,16 +136,14 @@ export class DynamoJobStorage implements JobStorage {
     seenCanonicalIds: readonly string[],
   ): Promise<number> {
     const seen = new Set(seenCanonicalIds);
-    const result = await this.document.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        IndexName: 'GSI2',
-        KeyConditionExpression: 'GSI2PK = :company',
-        ExpressionAttributeValues: { ':company': `COMPANY#${companyId}` },
-      }),
-    );
+    const items = await this.queryAll({
+      TableName: this.tableName,
+      IndexName: 'GSI2',
+      KeyConditionExpression: 'GSI2PK = :company',
+      ExpressionAttributeValues: { ':company': `COMPANY#${companyId}` },
+    });
     let expired = 0;
-    for (const item of result.Items ?? []) {
+    for (const item of items) {
       const canonicalId = item.canonicalId as string;
       if (seen.has(canonicalId) || item.status === 'EXPIRED') continue;
       await this.document.send(
@@ -187,16 +199,15 @@ export class DynamoJobStorage implements JobStorage {
 
   async claimBatch(userId: string, limit: number): Promise<NotificationBatch | undefined> {
     await this.recoverExpiredClaims(userId);
-    const result = await this.document.send(
-      new QueryCommand({
+    const candidates = (await this.queryAll(
+      {
         TableName: this.tableName,
         IndexName: 'GSI1',
         KeyConditionExpression: 'GSI1PK = :pending',
         ExpressionAttributeValues: { ':pending': `PENDING#${userId}` },
-        Limit: limit,
-      }),
-    );
-    const candidates = (result.Items ?? []) as PendingNotification[];
+      },
+      limit,
+    )) as unknown as PendingNotification[];
     if (!candidates.length) return undefined;
     const batchId = randomUUID();
     const items: PendingNotification[] = [];
@@ -297,14 +308,12 @@ export class DynamoJobStorage implements JobStorage {
   }
 
   async feedback(userId: string): Promise<UserFeedback[]> {
-    const result = await this.document.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        KeyConditionExpression: 'PK = :pk',
-        ExpressionAttributeValues: { ':pk': `FEEDBACK#${userId}` },
-      }),
-    );
-    return (result.Items ?? []).map((item) => item.value as UserFeedback);
+    const items = await this.queryAll({
+      TableName: this.tableName,
+      KeyConditionExpression: 'PK = :pk',
+      ExpressionAttributeValues: { ':pk': `FEEDBACK#${userId}` },
+    });
+    return items.map((item) => item.value as UserFeedback);
   }
 
   async putFeedback(value: UserFeedback): Promise<void> {
@@ -318,6 +327,28 @@ export class DynamoJobStorage implements JobStorage {
         },
       }),
     );
+  }
+
+  private async queryAll(
+    input: QueryCommandInput,
+    maximumItems?: number,
+  ): Promise<Record<string, unknown>[]> {
+    const items: Record<string, unknown>[] = [];
+    let exclusiveStartKey: QueryCommandInput['ExclusiveStartKey'];
+    do {
+      const remaining =
+        maximumItems === undefined ? undefined : Math.max(1, maximumItems - items.length);
+      const result = await this.document.send(
+        new QueryCommand({
+          ...input,
+          ...(remaining === undefined ? {} : { Limit: remaining }),
+          ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
+        }),
+      );
+      items.push(...((result.Items ?? []) as Record<string, unknown>[]));
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (exclusiveStartKey && (maximumItems === undefined || items.length < maximumItems));
+    return maximumItems === undefined ? items : items.slice(0, maximumItems);
   }
 
   private async updateNotification(
@@ -355,15 +386,13 @@ export class DynamoJobStorage implements JobStorage {
 
   private async recoverExpiredClaims(userId: string): Promise<void> {
     const now = new Date().toISOString();
-    const result = await this.document.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        IndexName: 'GSI1',
-        KeyConditionExpression: 'GSI1PK = :claimed AND GSI1SK <= :now',
-        ExpressionAttributeValues: { ':claimed': `CLAIMED#${userId}`, ':now': now },
-      }),
-    );
-    for (const item of result.Items ?? []) {
+    const items = await this.queryAll({
+      TableName: this.tableName,
+      IndexName: 'GSI1',
+      KeyConditionExpression: 'GSI1PK = :claimed AND GSI1SK <= :now',
+      ExpressionAttributeValues: { ':claimed': `CLAIMED#${userId}`, ':now': now },
+    });
+    for (const item of items) {
       await this.document.send(
         new UpdateCommand({
           TableName: this.tableName,
@@ -390,7 +419,11 @@ export class MemoryJobStorage implements JobStorage {
   private readonly evaluations = new Map<string, EvaluationRecord>();
   private readonly jobs = new Map<
     string,
-    { hash: string; companyId: string; status: 'ACTIVE' | 'EXPIRED' | 'REOPENED' }
+    {
+      job: NormalizedJob;
+      companyId: string;
+      status: 'ACTIVE' | 'EXPIRED' | 'REOPENED';
+    }
   >();
   private readonly pending = new Map<string, PendingNotification>();
   private readonly feedbackItems: UserFeedback[] = [];
@@ -407,13 +440,13 @@ export class MemoryJobStorage implements JobStorage {
   upsertJob(job: NormalizedJob): Promise<{ isNew: boolean; materiallyChanged: boolean }> {
     const prior = this.jobs.get(job.canonicalId);
     this.jobs.set(job.canonicalId, {
-      hash: job.contentHash,
+      job,
       companyId: job.companyId,
       status: prior?.status === 'EXPIRED' ? 'REOPENED' : 'ACTIVE',
     });
     return Promise.resolve({
       isNew: !prior,
-      materiallyChanged: Boolean(prior && prior.hash !== job.contentHash),
+      materiallyChanged: Boolean(prior && isMaterialJobChange(prior.job, job)),
     });
   }
   markMissingExpired(companyId: string, seenCanonicalIds: readonly string[]): Promise<number> {
@@ -476,4 +509,48 @@ export class MemoryJobStorage implements JobStorage {
     this.feedbackItems.push(value);
     return Promise.resolve();
   }
+}
+
+export function isMaterialJobChange(
+  previous: Partial<NormalizedJob>,
+  current: NormalizedJob,
+): boolean {
+  if (previous.contentHash === current.contentHash) return false;
+  if (
+    previous.title !== current.title ||
+    previous.location !== current.location ||
+    previous.applyUrl !== current.applyUrl ||
+    previous.sourceUrl !== current.sourceUrl
+  ) {
+    return true;
+  }
+  const previousDescription = previous.description ?? '';
+  const currentDescription = current.description ?? '';
+  if (materialSignals(previousDescription) !== materialSignals(currentDescription)) return true;
+  return jaccardSimilarity(previousDescription, currentDescription) < 0.9;
+}
+
+function materialSignals(value: string): string {
+  return value
+    .toLowerCase()
+    .split(/[.!?\n]+/)
+    .filter((sentence) =>
+      /\b(required|must|minimum|remote|hybrid|on-site|onsite|salary|compensation|cad|usd|\$)\b/.test(
+        sentence,
+      ),
+    )
+    .map((sentence) => sentence.replace(/\s+/g, ' ').trim())
+    .sort()
+    .join('|');
+}
+
+function jaccardSimilarity(left: string, right: string): number {
+  const tokens = (value: string): Set<string> =>
+    new Set(value.toLowerCase().match(/[a-z0-9+#.]{3,}/g) ?? []);
+  const a = tokens(left);
+  const b = tokens(right);
+  if (a.size === 0 && b.size === 0) return 1;
+  let intersection = 0;
+  for (const token of a) if (b.has(token)) intersection += 1;
+  return intersection / (a.size + b.size - intersection);
 }

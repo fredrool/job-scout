@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MemoryJobStorage } from '../src/storage.js';
+import { isMaterialJobChange, MemoryJobStorage } from '../src/storage.js';
 import type { EvaluationRecord } from '../src/ai.js';
 import type { MatchResult } from '../src/domain.js';
 
@@ -11,6 +11,7 @@ const evaluation: EvaluationRecord = {
     mustHaveGaps: [],
     remoteEligibility: 'CONFIRMED',
     legitimacySignals: [],
+    fitScore: 90,
     confidence: 1,
     recommendation: 'Apply',
   },
@@ -37,6 +38,7 @@ function match(id: string): MatchResult {
       contentHash: `hash-${id}`,
     },
     score: 90,
+    preliminaryScore: 82,
     breakdown: {
       skills: 30,
       role: 20,
@@ -52,6 +54,7 @@ function match(id: string): MatchResult {
     gaps: [],
     salary: null,
     eligible: true,
+    promising: true,
   };
 }
 
@@ -86,5 +89,34 @@ describe('notification queue', () => {
     const reopened = await storage.upsertJob(job);
     expect(reopened.isNew).toBe(false);
     expect(await storage.markMissingExpired('acme', [job.canonicalId])).toBe(0);
+  });
+
+  it('ignores insignificant copy edits but detects requirement and remote changes', () => {
+    const current = {
+      ...match('material').job,
+      description:
+        'Build and operate TypeScript services on AWS. Collaborate with product and design. Improve reliability, security, performance, testing, delivery, and developer experience.',
+    };
+    expect(
+      isMaterialJobChange(current, {
+        ...current,
+        contentHash: 'minor-edit',
+        description: `${current.description} Formatting updated.`,
+      }),
+    ).toBe(false);
+    expect(
+      isMaterialJobChange(current, {
+        ...current,
+        contentHash: 'requirement-edit',
+        description: `${current.description} Required: active US security clearance.`,
+      }),
+    ).toBe(true);
+    expect(
+      isMaterialJobChange(current, {
+        ...current,
+        contentHash: 'location-edit',
+        location: 'Remote — US only',
+      }),
+    ).toBe(true);
   });
 });

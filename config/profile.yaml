@@ -1,32 +1,346 @@
+# Proficiency is qualitative; verify individual skills before representing them as expert.
+# Remote eligibility must be checked from the posting, not inferred from this profile.
 version: '1'
 userId: default
-name: Senior full-stack and platform engineer
+name: Senior hands-on full-stack, backend, product and platform engineer
 targetTitles:
   - Senior Full-Stack Engineer
+  - Senior Full Stack Developer
+  - Senior Software Engineer
+  - Senior Software Developer
   - Senior Product Engineer
+  - Senior Backend Engineer
+  - Senior Frontend Engineer
+  - Senior React Engineer
+  - Senior TypeScript Engineer
+  - Senior Node.js Engineer
+  - Senior Java Engineer
+  - Senior Spring Boot Engineer
+  - Senior Platform Engineer
+  - Platform Software Engineer
   - Staff Software Engineer
-  - Platform Engineer
+  - Staff Product Engineer
+  - Lead Software Engineer
+  - Technical Lead
   - Software Architect
+  - Solutions Architect
+  - Senior Cloud Engineer
+  - Senior Integration Engineer
+  - Senior Distributed Systems Engineer
+  - Applied AI Engineer
+  - AI Application Engineer
+  - LLM Application Engineer
 skills:
   - name: TypeScript
     proficiency: expert
-    evidence: Production full-stack engineering
+    evidence: Extensive production engineering across multiple companies and projects
+  - name: JavaScript
+    proficiency: expert
+    evidence: Extensive production engineering across multiple companies and projects
   - name: React
     proficiency: expert
-    evidence: Production product engineering
+    evidence: Extensive production engineering across multiple companies and projects
   - name: Node.js
     proficiency: expert
-    evidence: Production backend services
-  - name: AWS
+    evidence: Extensive production engineering across multiple companies and projects
+  - name: REST APIs
+    proficiency: expert
+    evidence: Extensive production engineering across multiple companies and projects
+  - name: Full-stack development
+    proficiency: expert
+    evidence: Extensive production engineering across multiple companies and projects
+  - name: Software architecture
+    proficiency: expert
+    evidence: Extensive production engineering across multiple companies and projects
+  - name: API integration
+    proficiency: expert
+    evidence: Extensive production engineering across multiple companies and projects
+  - name: Next.js
     proficiency: advanced
-    evidence: Production cloud architecture
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: NestJS
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: React Hook Form
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Zod
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: SWR
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: GraphQL
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: PostgreSQL
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Prisma
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: TypeORM
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
   - name: Java
     proficiency: advanced
-    evidence: Production Spring Boot services
-  - name: Bedrock
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Spring Boot
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Microservices
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Domain-Driven Design
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: CQRS
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Event Sourcing
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: RabbitMQ
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Axon Framework
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Saga pattern
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: OAuth 2.0
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Auth0
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: AWS
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: CI/CD
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Docker
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Git
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Jest
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: React Testing Library
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Performance optimization
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: Distributed systems
+    proficiency: advanced
+    evidence: Production delivery at Ingeno, Croix Bleue/GeoBlue or prior engagements
+  - name: AWS RDS
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: AWS ECS
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: AWS Fargate
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: AWS ECR
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: AWS CloudWatch
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: AWS CodeBuild
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: AWS CodeDeploy
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: AWS CDK
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Terraform
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: DynamoDB
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Amazon Cognito
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Okta
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Playwright
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Vitest
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: MongoDB
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: GraphQL APIs
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Backend for Frontend
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Event-driven architecture
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: API security
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Cloud infrastructure
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: System integration
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: React 18
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Vite
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Node-RED
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: IoT
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Chrome extensions
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: AI-assisted coding
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Cursor
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Claude Code
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: CodeRabbit
+    proficiency: proficient
+    evidence: Hands-on implementation, troubleshooting, migration, testing or engineering workflows
+  - name: Go
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: AWS IAM
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: AWS Secrets Manager
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: HashiCorp Vault
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: Redis
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: Elasticsearch
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: Cypress
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: React Native
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: Chakra UI
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: OPC UA
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: Salesforce integration
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: SharePoint integration
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: Kubernetes
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: AWS Rekognition
+    proficiency: proficient
+    evidence:
+      Prior project exposure or practical configuration; depth varies by technology, not a claim of platform
+      administration
+  - name: AWS Bedrock
     proficiency: learning
-    evidence: Current applied AI projects
-workHistorySummary: 25+ years building secure, performant products and distributed systems.
+    evidence: Hands-on personal NestJS insurance AI agent prototype and experimentation
+  - name: LangChain
+    proficiency: learning
+    evidence: Hands-on personal NestJS insurance AI agent prototype and experimentation
+  - name: Anthropic Claude API
+    proficiency: learning
+    evidence: Hands-on personal NestJS insurance AI agent prototype and experimentation
+  - name: LLM tool calling
+    proficiency: learning
+    evidence: Hands-on personal NestJS insurance AI agent prototype and experimentation
+  - name: RAG
+    proficiency: learning
+    evidence: Active learning roadmap; not claimed as production experience
+  - name: Retrieval-Augmented Generation
+    proficiency: learning
+    evidence: Active learning roadmap; not claimed as production experience
+  - name: MCP
+    proficiency: learning
+    evidence: Active learning roadmap; not claimed as production experience
+  - name: LangGraph
+    proficiency: learning
+    evidence: Active learning roadmap; not claimed as production experience
+  - name: Vector databases
+    proficiency: learning
+    evidence: Active learning roadmap; not claimed as production experience
+  - name: Multi-agent orchestration
+    proficiency: learning
+    evidence: Active learning roadmap; not claimed as production experience
+workHistorySummary:
+  '25+ years of hands-on software engineering across frontend, backend, cloud and architecture.
+  Recent consulting at Ingeno (2024–2026): React/Next.js/NestJS business applications, Prisma and Playwright at
+  ACI Montreal; TypeScript/GraphQL industrial analytics and PostgreSQL/AWS RDS performance tuning at Bridor; AWS
+  deployment and container scaling, IoT and Node-RED at Valmetal; React/TypeScript advertising workflows at Live
+  Nation/Ticketmaster; Capsule.AI Chrome extension and Terraform-to-CDK migration. Croix Bleue/GeoBlue (2020–2024):
+  React insurance claims applications, Node.js BFF and OAuth 2.0, Okta-to-Auth0 migration, Java/Spring Boot microservices,
+  DDD, CQRS, AxonIQ Sagas, Event Sourcing, RabbitMQ, integrations with Salesforce and SharePoint. Earlier experience
+  includes Go APIs backed by DynamoDB, AWS CI/CD, Cognito and JavaScript/TypeScript modernization. Daily AI-assisted
+  coding with Cursor, Claude Code and CodeRabbit. Personal NestJS insurance AI agent with tool calling, LangChain
+  and AWS Bedrock; RAG, MCP and LangGraph are learning interests rather than established production expertise. Pragmatic
+  hands-on ownership, maintainability, performance, security and product delivery. Fluent in English and French.'
 locations:
   - Quebec
   - Canada
@@ -34,18 +348,28 @@ remoteOnly: true
 preferredRegions:
   - Quebec
   - Canada
-  - Employers explicitly hiring Canadians
+  - United States employers explicitly hiring remote workers in Canada
+  - European employers explicitly hiring remote workers in Canada
+  - Worldwide remote roles open to residents of Quebec
 compensation:
   currency: CAD
 hardExclusions:
   - mandatory on-site
   - mandatory hybrid
 learningInterests:
+  - Applied AI
+  - AI agents
   - LLM
-  - Bedrock
+  - tool calling
+  - AWS Bedrock
+  - LangChain
   - RAG
   - MCP
-  - LangChain
   - LangGraph
+  - AI-assisted development
+  - agentic coding
+  - platform engineering
+  - cloud architecture
+  - distributed systems
 feedbackPreferences:
   rejectionPenalty: 4

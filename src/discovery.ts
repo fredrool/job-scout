@@ -42,8 +42,8 @@ export class DiscoveryService {
       try {
         const provider = this.providersByKind.get(company.provider);
         if (!provider) throw new Error(`No provider registered for "${company.provider}"`);
-        const providerJobs = await provider.fetchJobs(company);
-        for (const job of providerJobs) {
+        const providerResult = await provider.fetchJobs(company);
+        for (const job of providerResult.jobs) {
           const normalized = normalizeJob(company, job, this.verifier);
           jobs.set(normalized.canonicalId, normalized);
         }
@@ -51,15 +51,17 @@ export class DiscoveryService {
           companyId: company.id,
           provider: company.provider,
           healthy: true,
+          complete: providerResult.complete,
           checkedAt: new Date().toISOString(),
           latencyMs: Date.now() - started,
-          jobsFound: providerJobs.length,
+          jobsFound: providerResult.jobs.length,
         });
       } catch (error) {
         sources.push({
           companyId: company.id,
           provider: company.provider,
           healthy: false,
+          complete: false,
           checkedAt: new Date().toISOString(),
           latencyMs: Date.now() - started,
           error: error instanceof Error ? error.message : 'Unknown discovery error',

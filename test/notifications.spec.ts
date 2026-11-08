@@ -29,6 +29,7 @@ const batch: NotificationBatch = {
           contentHash: 'hash',
         },
         score: 88,
+        preliminaryScore: 76,
         breakdown: {
           skills: 25,
           role: 20,
@@ -44,6 +45,7 @@ const batch: NotificationBatch = {
         gaps: ['Eligibility unknown'],
         salary: null,
         eligible: true,
+        promising: true,
       },
       evaluation: {
         cacheKey: 'cache',
@@ -53,6 +55,7 @@ const batch: NotificationBatch = {
           mustHaveGaps: [],
           remoteEligibility: 'POSSIBLE',
           legitimacySignals: [],
+          fitScore: 88,
           confidence: 0.7,
           recommendation: 'Verify eligibility',
         },

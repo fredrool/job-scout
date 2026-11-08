@@ -63,6 +63,7 @@ describe('BedrockEvaluator', () => {
                   mustHaveGaps: [],
                   remoteEligibility: 'POSSIBLE',
                   legitimacySignals: ['Official source'],
+                  fitScore: 82,
                   confidence: 0.8,
                   recommendation: 'Verify Canadian eligibility.',
                 }),
