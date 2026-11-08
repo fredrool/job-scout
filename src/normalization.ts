@@ -71,6 +71,16 @@ export function normalizeJob(
 
   return {
     ...normalized,
+    companyName: company.name,
+    sourceName: company.name,
+    sourceKind: 'EMPLOYER',
+    sourceUrls: [
+      { provider: company.provider, url: sourceUrl, kind: 'ORIGINAL' },
+      ...(applyUrl === sourceUrl
+        ? []
+        : [{ provider: company.provider, url: applyUrl, kind: 'APPLICATION' as const }]),
+    ],
+    dedupeKey: createDedupeKey(company.name, normalized.title, normalized.location),
     contentHash: sha256(
       stableStringify({
         title: normalized.title,
@@ -81,6 +91,22 @@ export function normalizeJob(
       }),
     ),
   };
+}
+
+export function createDedupeKey(
+  companyName: string,
+  title: string,
+  location: string | null,
+): string {
+  const normalize = (value: string): string =>
+    value
+      .toLowerCase()
+      .replace(/\b(inc|incorporated|corp|corporation|llc|ltd|limited|co)\b\.?/g, '')
+      .replace(/[^a-z0-9+#]+/g, ' ')
+      .trim();
+  const normalizedLocation =
+    location && /\bremote\b/i.test(location) ? 'remote' : normalize(location ?? 'unknown');
+  return sha256(`${normalize(companyName)}|${normalize(title)}|${normalizedLocation}`);
 }
 
 export function canonicalizeUrl(input: URL): string {

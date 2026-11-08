@@ -1,8 +1,9 @@
 # Job Scout
 
-Job Scout is a scheduled AWS Lambda application that collects jobs from an
-explicit company registry, ranks them with Amazon Bedrock, stores state in
-DynamoDB, and sends a digest with Amazon SES.
+Job Scout is a scheduled AWS Lambda application that searches multi-employer
+job marketplaces first, supplements them with explicit employer ATS boards,
+ranks normalized jobs with Amazon Bedrock, stores state in DynamoDB, and sends
+a digest with Amazon SES.
 
 This repository contains deployment-ready infrastructure and automation, but
 nothing in it deploys automatically. The schedule defaults to disabled.
@@ -39,6 +40,9 @@ npm run cli -- companies add example-inc "Example Inc" greenhouse https://boards
 npm run cli -- companies add-file company.yaml
 npm run cli -- companies enable example-inc
 npm run cli -- companies health
+npm run cli -- providers test remotive
+npm run cli -- providers test adzuna
+npm run cli -- providers test-all
 npm run cli -- scan dry-run
 npm run cli -- feedback JOB_ID interested
 ```
@@ -52,6 +56,30 @@ The built-in `companies discover` command recognizes a career URL supplied by
 the operator. Job Scout cannot automatically find new employers unless a
 legitimate search provider implementing `CompanyDiscoverySource` is configured.
 Discovery candidates always require manual approval and are never auto-enabled.
+
+## Marketplace discovery
+
+`config/job-boards.yaml` independently controls Adzuna, Remotive, and Jooble,
+including role families, countries/regions, polling intervals, page limits,
+and request caps. The default strategy searches senior full-stack, software,
+frontend/React, Node/Java backend, product, platform, staff/architecture, and
+applied-AI integration roles.
+
+- Adzuna is enabled but skipped until `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` are
+  supplied through the environment or protected Terraform/GitHub variables.
+  Results link through Adzuna and retain the required attribution.
+- Remotive is enabled without credentials. It is fetched at most once every
+  six hours, never more than its documented recommendation of four times per
+  day, and every listing is labeled and linked to Remotive.
+- Jooble is implemented but disabled. Enable it only after obtaining the
+  correct regional key, confirming its lifetime/request quota, and setting
+  `JOOBLE_API_KEY`.
+
+Credentials are never stored in YAML. A missing optional credential reports a
+source health warning and does not prevent Job Scout or other providers from
+running. Do not add LinkedIn or Indeed scraping without authorized API access.
+Review each provider's current API terms, attribution rules, and account quota
+before enabling production polling.
 
 The packaging command must produce
 `.artifacts/job-scout-lambda.zip`. `scripts/package-lambda.mjs` is the
@@ -81,9 +109,9 @@ terraform plan -var-file=dev.tfvars
 ```
 
 `plan` reads the Lambda ZIP, so package first. Do not enable the schedule until
-the registry, model access, and SES identities have been checked. An empty
-registry, or a registry in which every company is disabled, intentionally
-produces no jobs.
+marketplace terms/credentials, company boards, model access, and SES identities
+have been checked. An empty company registry disables only secondary ATS
+discovery; enabled marketplaces continue searching.
 
 Safe manual invocation and logs:
 
@@ -110,7 +138,9 @@ this stack before initializing. Terraform's native S3 lockfile is enabled.
 - Configure required reviewers on both GitHub environments. Set environment
   variables `AWS_ROLE_ARN`, `TF_STATE_BUCKET`, and optionally
   `AWS_REGION` and `SCHEDULE_ENABLED`, plus secrets `NOTIFICATION_EMAIL` and
-  `SENDER_EMAIL`.
+  `SENDER_EMAIL`. Add optional `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` secrets
+  when Adzuna access is approved; keep `JOOBLE_API_KEY` unset while Jooble is
+  disabled.
 
 See [architecture](docs/architecture.md), the [runbook](docs/runbook.md), and
 [cost and security guidance](docs/cost-security.md). No deployment or live AWS

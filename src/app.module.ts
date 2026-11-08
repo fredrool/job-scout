@@ -7,6 +7,15 @@ import { MatchingService } from './matching.js';
 import { DigestRenderer, SesNotificationService } from './notifications.js';
 import { ScanPipeline } from './pipeline.js';
 import { DynamoJobStorage, MemoryJobStorage, type JobStorage } from './storage.js';
+import { HttpClient } from './http-client.js';
+import { JobBoardsRegistry } from './marketplace-config.js';
+import {
+  AdzunaMarketplaceProvider,
+  JoobleMarketplaceProvider,
+  RemotiveMarketplaceProvider,
+  type MarketplaceProvider,
+} from './marketplace-providers.js';
+import { MARKETPLACE_PROVIDERS, MarketplaceDiscoveryService } from './marketplace-discovery.js';
 
 @Module({
   imports: [DiscoveryModule],
@@ -22,6 +31,40 @@ import { DynamoJobStorage, MemoryJobStorage, type JobStorage } from './storage.j
           : new DynamoJobStorage(config.values.DYNAMODB_TABLE_NAME),
     },
     { provide: 'EVALUATION_CACHE', useExisting: 'JOB_STORAGE' },
+    {
+      provide: JobBoardsRegistry,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService): JobBoardsRegistry =>
+        new JobBoardsRegistry(config.values.JOB_BOARDS_PATH),
+    },
+    {
+      provide: AdzunaMarketplaceProvider,
+      inject: [HttpClient],
+      useFactory: (http: HttpClient): AdzunaMarketplaceProvider =>
+        new AdzunaMarketplaceProvider(http),
+    },
+    {
+      provide: RemotiveMarketplaceProvider,
+      inject: [HttpClient],
+      useFactory: (http: HttpClient): RemotiveMarketplaceProvider =>
+        new RemotiveMarketplaceProvider(http),
+    },
+    {
+      provide: JoobleMarketplaceProvider,
+      inject: [HttpClient],
+      useFactory: (http: HttpClient): JoobleMarketplaceProvider =>
+        new JoobleMarketplaceProvider(http),
+    },
+    {
+      provide: MARKETPLACE_PROVIDERS,
+      inject: [AdzunaMarketplaceProvider, RemotiveMarketplaceProvider, JoobleMarketplaceProvider],
+      useFactory: (
+        adzuna: AdzunaMarketplaceProvider,
+        remotive: RemotiveMarketplaceProvider,
+        jooble: JoobleMarketplaceProvider,
+      ): readonly MarketplaceProvider[] => [adzuna, remotive, jooble],
+    },
+    MarketplaceDiscoveryService,
     BedrockEvaluator,
     {
       provide: SesNotificationService,

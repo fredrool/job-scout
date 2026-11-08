@@ -182,25 +182,30 @@ resource "aws_lambda_function" "job_scout" {
   architectures    = ["arm64"]
 
   environment {
-    variables = {
-      AWS_NODEJS_CONNECTION_REUSE_ENABLED = "1"
-      AWS_REGION                          = var.aws_region
-      NODE_ENV                            = "production"
-      MOCK_MODE                           = "false"
-      BEDROCK_MODEL_ID                    = var.bedrock_inference_profile_id
-      DYNAMODB_TABLE_NAME                 = aws_dynamodb_table.job_scout.name
-      NOTIFICATION_EMAIL                  = var.notification_email
-      SENDER_EMAIL                        = var.sender_email
-      USER_ID                             = "default"
-      SCORE_THRESHOLD                     = tostring(var.score_threshold)
-      DIGEST_LIMIT                        = tostring(var.digest_limit)
-      MAX_BEDROCK_CALLS_PER_SCAN          = tostring(var.max_bedrock_calls_per_scan)
-      MAX_JOBS_PER_SCAN                   = tostring(var.max_jobs_per_scan)
-      MAX_REQUESTS_PER_SCAN               = tostring(var.max_requests_per_scan)
-      MAX_RUNTIME_MS                      = tostring((var.lambda_timeout_seconds - 30) * 1000)
-      PRESENTATION_TIMEZONE               = var.presentation_timezone
-      DRY_RUN                             = tostring(var.dry_run)
-    }
+    variables = merge(
+      {
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED = "1"
+        AWS_REGION                          = var.aws_region
+        NODE_ENV                            = "production"
+        MOCK_MODE                           = "false"
+        BEDROCK_MODEL_ID                    = var.bedrock_inference_profile_id
+        DYNAMODB_TABLE_NAME                 = aws_dynamodb_table.job_scout.name
+        NOTIFICATION_EMAIL                  = var.notification_email
+        SENDER_EMAIL                        = var.sender_email
+        USER_ID                             = "default"
+        SCORE_THRESHOLD                     = tostring(var.score_threshold)
+        DIGEST_LIMIT                        = tostring(var.digest_limit)
+        MAX_BEDROCK_CALLS_PER_SCAN          = tostring(var.max_bedrock_calls_per_scan)
+        MAX_JOBS_PER_SCAN                   = tostring(var.max_jobs_per_scan)
+        MAX_REQUESTS_PER_SCAN               = tostring(var.max_requests_per_scan)
+        MAX_RUNTIME_MS                      = tostring((var.lambda_timeout_seconds - 30) * 1000)
+        PRESENTATION_TIMEZONE               = var.presentation_timezone
+        DRY_RUN                             = tostring(var.dry_run)
+      },
+      var.adzuna_app_id == null ? {} : { ADZUNA_APP_ID = var.adzuna_app_id },
+      var.adzuna_app_key == null ? {} : { ADZUNA_APP_KEY = var.adzuna_app_key },
+      var.jooble_api_key == null ? {} : { JOOBLE_API_KEY = var.jooble_api_key }
+    )
   }
 
   depends_on = [

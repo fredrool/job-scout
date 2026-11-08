@@ -1,0 +1,70 @@
+providers:
+  - provider: adzuna
+    enabled: true
+    pollIntervalMinutes: 240
+    appIdEnv: ADZUNA_APP_ID
+    appKeyEnv: ADZUNA_APP_KEY
+    countries: [ca, us, gb]
+    regions:
+      - Canada
+      - North America
+      - Americas
+      - Remote
+    searchQueries:
+      - Senior Full-Stack Engineer Developer
+      - Senior Software Engineer
+      - Senior React Frontend Engineer
+      - Senior Backend Engineer Node.js Java Spring Boot
+      - Senior Product Engineer
+      - Senior Platform Engineer
+      - Staff Engineer Software Architect
+      - Applied AI Engineer AI Integration Engineer
+    maxPagesPerQuery: 1
+    resultsPerPage: 50
+    maxRequestsPerPoll: 20
+
+  # Remotive asks public API users to poll at most four times per day and to
+  # attribute/link every listing. One unfiltered software-development request
+  # is cached and filtered locally across all role families.
+  - provider: remotive
+    enabled: true
+    pollIntervalMinutes: 360
+    category: software-dev
+    attributionRequired: true
+    regions:
+      - Worldwide
+      - Global
+      - Americas
+      - Canada
+    searchQueries:
+      - Senior Full-Stack Engineer Developer
+      - Senior Software Engineer
+      - Senior React Frontend Engineer
+      - Senior Backend Engineer Node.js Java Spring Boot
+      - Senior Product Engineer
+      - Senior Platform Engineer
+      - Staff Engineer Software Architect
+      - Applied AI Engineer AI Integration Engineer
+    maxPagesPerQuery: 1
+    resultsPerPage: 100
+    maxRequestsPerPoll: 1
+
+  # Jooble uses a region-specific API key and has a limited free lifetime
+  # quota. Keep disabled until access, target region, and quota are approved.
+  - provider: jooble
+    enabled: false
+    pollIntervalMinutes: 1440
+    apiKeyEnv: JOOBLE_API_KEY
+    endpoint: https://jooble.org/api
+    lifetimeRequestQuota: 500
+    regions:
+      - Canada
+    searchQueries:
+      - Senior Software Engineer
+      - Senior Full-Stack Engineer
+      - Senior Backend Engineer
+      - Senior Platform Engineer
+      - Applied AI Engineer
+    maxPagesPerQuery: 1
+    resultsPerPage: 20
+    maxRequestsPerPoll: 5

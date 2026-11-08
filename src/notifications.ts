@@ -41,9 +41,14 @@ export class DigestRenderer {
         match.remoteEligibility === 'POSSIBLE'
           ? '<p style="color:#9a6700"><strong>Eligibility requires verification:</strong> Canada/Quebec was not explicitly confirmed.</p>'
           : '';
+      const sourceLabel =
+        match.job.provider === 'adzuna'
+          ? `<a href="${escapeHtml(sourceUrl)}" style="display:inline-block;min-width:116px;min-height:23px">Jobs by Adzuna</a>`
+          : escapeHtml(match.job.sourceName ?? match.job.provider);
       return `<article style="border:1px solid #ddd;border-radius:8px;padding:16px;margin:16px 0">
-<h2>${escapeHtml(match.job.title)} — ${escapeHtml(match.job.companyId)}</h2>
+<h2>${escapeHtml(match.job.title)} — ${escapeHtml(match.job.companyName ?? match.job.companyId)}</h2>
 <p><strong>Match:</strong> ${String(match.score)}/100 — ${escapeHtml(match.reasons.join('; ') || evaluation.evaluation.recommendation)}</p>
+<p><strong>Source:</strong> ${sourceLabel}${match.job.sourceKind === 'MARKETPLACE' ? ' (marketplace listing)' : ' (original employer board)'}</p>
 <p><strong>Remote eligibility:</strong> ${match.remoteEligibility}</p>${warning}
 <p><strong>Salary:</strong> ${escapeHtml(match.salary ?? 'Unknown')}</p>
 <p><strong>Potential gaps:</strong> ${escapeHtml(match.gaps.join('; ') || 'None identified')}</p>
@@ -56,8 +61,9 @@ export class DigestRenderer {
     const textJobs = batch.items.map((item) => {
       const { match, evaluation } = item;
       return [
-        `${match.job.title} — ${match.job.companyId}`,
+        `${match.job.title} — ${match.job.companyName ?? match.job.companyId}`,
         `Match: ${String(match.score)}/100 — ${match.reasons.join('; ') || evaluation.evaluation.recommendation}`,
+        `Source: ${match.job.sourceName ?? match.job.provider}${match.job.sourceKind === 'MARKETPLACE' ? ' (marketplace listing)' : ' (original employer board)'}`,
         `Remote eligibility: ${match.remoteEligibility}${match.remoteEligibility === 'POSSIBLE' ? ' — Canada/Quebec eligibility requires verification' : ''}`,
         `Salary: ${match.salary ?? 'Unknown'}`,
         `Potential gaps: ${match.gaps.join('; ') || 'None identified'}`,

@@ -8,6 +8,7 @@ import type { CompanyRegistry } from '../src/registry.js';
 import type { BedrockEvaluator } from '../src/ai.js';
 import type { SesNotificationService } from '../src/notifications.js';
 import type { SearchProfile } from '../src/domain.js';
+import type { MarketplaceDiscoveryService } from '../src/marketplace-discovery.js';
 
 const profile: SearchProfile = {
   version: '1',
@@ -104,6 +105,14 @@ describe('ScanPipeline integration', () => {
       { values },
       registry,
       discovery,
+      {
+        discover: vi.fn().mockResolvedValue({
+          jobs: [],
+          sources: [],
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        }),
+      } as unknown as MarketplaceDiscoveryService,
       new MatchingService(),
       evaluator,
       new MemoryJobStorage(),
@@ -154,6 +163,14 @@ describe('ScanPipeline integration', () => {
           ],
         }),
       } as unknown as DiscoveryService,
+      {
+        discover: vi.fn().mockResolvedValue({
+          jobs: [],
+          sources: [],
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        }),
+      } as unknown as MarketplaceDiscoveryService,
       new MatchingService(),
       { resetRun: vi.fn(), evaluate: vi.fn() } as unknown as BedrockEvaluator,
       storage,

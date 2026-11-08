@@ -30,6 +30,9 @@ jobs:
       TF_VAR_environment: ${{ inputs.environment }}
       TF_VAR_notification_email: ${{ secrets.NOTIFICATION_EMAIL }}
       TF_VAR_sender_email: ${{ secrets.SENDER_EMAIL }}
+      TF_VAR_adzuna_app_id: ${{ secrets.ADZUNA_APP_ID }}
+      TF_VAR_adzuna_app_key: ${{ secrets.ADZUNA_APP_KEY }}
+      TF_VAR_jooble_api_key: ${{ secrets.JOOBLE_API_KEY }}
       TF_VAR_schedule_enabled: ${{ vars.SCHEDULE_ENABLED || 'false' }}
 
     steps:

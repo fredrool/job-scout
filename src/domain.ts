@@ -1,7 +1,14 @@
 import { z } from 'zod';
 
-export const providerKindSchema = z.enum(['greenhouse', 'lever', 'ashby', 'json']);
+export const companyProviderKindSchema = z.enum(['greenhouse', 'lever', 'ashby', 'json']);
+export const marketplaceProviderKindSchema = z.enum(['adzuna', 'remotive', 'jooble']);
+export const providerKindSchema = z.union([
+  companyProviderKindSchema,
+  marketplaceProviderKindSchema,
+]);
 export type ProviderKind = z.infer<typeof providerKindSchema>;
+export type CompanyProviderKind = z.infer<typeof companyProviderKindSchema>;
+export type MarketplaceProviderKind = z.infer<typeof marketplaceProviderKindSchema>;
 
 export const jsonFeedMappingSchema = z
   .object({
@@ -23,7 +30,7 @@ export const companySchema = z
     name: z.string().min(1),
     enabled: z.boolean().default(false),
     careersUrl: z.url().startsWith('https://'),
-    provider: providerKindSchema,
+    provider: companyProviderKindSchema,
     boardToken: z.string().min(1).optional(),
     feedUrl: z.url().startsWith('https://').optional(),
     feedMapping: jsonFeedMappingSchema.optional(),
@@ -110,6 +117,16 @@ export interface NormalizedJob {
   sourceUrl: string;
   updatedAt: string | null;
   contentHash: string;
+  dedupeKey?: string;
+  companyName?: string;
+  sourceName?: string;
+  sourceKind?: 'EMPLOYER' | 'MARKETPLACE';
+  sourceUrls?: {
+    provider: ProviderKind;
+    url: string;
+    kind: 'ORIGINAL' | 'APPLICATION' | 'AGGREGATOR';
+  }[];
+  salaryText?: string | null;
   firstSeenAt?: string;
   lastSeenAt?: string;
   sourcePublishedAt?: string | null;
@@ -121,6 +138,14 @@ export interface SourceHealth {
   provider: ProviderKind;
   healthy: boolean;
   complete: boolean;
+  authoritativeForExpiration?: boolean;
+  status?:
+    | 'FETCHED'
+    | 'SKIPPED_INTERVAL'
+    | 'SKIPPED_MOCK'
+    | 'MISSING_CREDENTIALS'
+    | 'FAILED';
+  requestsMade?: number;
   checkedAt: string;
   latencyMs: number;
   jobsFound?: number;

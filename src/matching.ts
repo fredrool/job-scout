@@ -86,7 +86,8 @@ export class MatchingService {
     profile: SearchProfile,
     feedback: readonly UserFeedback[] = [],
   ): MatchResult {
-    const text = `${job.title} ${job.location ?? ''} ${job.description ?? ''}`.toLowerCase();
+    const text =
+      `${job.title} ${job.location ?? ''} ${job.description ?? ''} ${job.salaryText ?? ''}`.toLowerCase();
     const remoteEligibility = classifyRemoteEligibility(job);
     const reasons: string[] = [];
     const gaps: string[] = [];

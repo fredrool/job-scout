@@ -11,7 +11,12 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type { EvaluationCache, EvaluationRecord } from './ai.js';
-import type { MatchResult, NormalizedJob, UserFeedback } from './domain.js';
+import type {
+  MarketplaceProviderKind,
+  MatchResult,
+  NormalizedJob,
+  UserFeedback,
+} from './domain.js';
 
 export interface PendingNotification {
   userId: string;
@@ -31,10 +36,21 @@ export interface NotificationBatch {
   createdAt: string;
 }
 
+export interface ProviderState {
+  provider: MarketplaceProviderKind;
+  lastFetchAt: string;
+  lastSuccessAt?: string;
+  status: 'SUCCESS' | 'FAILED';
+  requestsMade: number;
+  error?: string;
+}
+
 export interface JobStorage extends EvaluationCache {
   acquireLease(owner: string, ttlSeconds: number): Promise<boolean>;
   releaseLease(owner: string): Promise<void>;
-  upsertJob(job: NormalizedJob): Promise<{ isNew: boolean; materiallyChanged: boolean }>;
+  upsertJob(
+    job: NormalizedJob,
+  ): Promise<{ isNew: boolean; materiallyChanged: boolean; job: NormalizedJob }>;
   markMissingExpired(companyId: string, seenCanonicalIds: readonly string[]): Promise<number>;
   queue(match: MatchResult, evaluation: EvaluationRecord, userId: string): Promise<boolean>;
   claimBatch(userId: string, limit: number): Promise<NotificationBatch | undefined>;
@@ -42,16 +58,8 @@ export interface JobStorage extends EvaluationCache {
   failBatch(batch: NotificationBatch, reason: string): Promise<void>;
   feedback(userId: string): Promise<UserFeedback[]>;
   putFeedback(value: UserFeedback): Promise<void>;
-}
-
-interface StoredJobShape {
-  contentHash?: string;
-  status?: 'ACTIVE' | 'EXPIRED' | 'REOPENED';
-  title?: string;
-  location?: string | null;
-  description?: string | null;
-  applyUrl?: string;
-  sourceUrl?: string;
+  getProviderState(provider: MarketplaceProviderKind): Promise<ProviderState | undefined>;
+  putProviderState(state: ProviderState): Promise<void>;
 }
 
 @Injectable()
@@ -103,10 +111,13 @@ export class DynamoJobStorage implements JobStorage {
     }
   }
 
-  async upsertJob(job: NormalizedJob): Promise<{ isNew: boolean; materiallyChanged: boolean }> {
-    const key = { PK: `JOB#${job.provider}#${job.canonicalId}`, SK: 'JOB' };
+  async upsertJob(
+    job: NormalizedJob,
+  ): Promise<{ isNew: boolean; materiallyChanged: boolean; job: NormalizedJob }> {
+    const key = { PK: `JOB#${job.dedupeKey ?? job.canonicalId}`, SK: 'JOB' };
     const prior = await this.document.send(new GetCommand({ TableName: this.tableName, Key: key }));
-    const previous = prior.Item as StoredJobShape | undefined;
+    const previous = prior.Item as (Partial<NormalizedJob> & { status?: string }) | undefined;
+    const mergedJob = previous ? mergeJobEvidence(previous, job) : job;
     const now = new Date().toISOString();
     const reopened = previous?.status === 'EXPIRED';
     await this.document.send(
@@ -114,20 +125,21 @@ export class DynamoJobStorage implements JobStorage {
         TableName: this.tableName,
         Item: {
           ...key,
-          ...job,
+          ...mergedJob,
           firstSeenAt: (prior.Item?.firstSeenAt as string | undefined) ?? now,
           lastSeenAt: now,
           status: reopened ? 'REOPENED' : 'ACTIVE',
           GSI1PK: 'JOBSTATUS#ACTIVE',
           GSI1SK: now,
-          GSI2PK: `COMPANY#${job.companyId}`,
-          GSI2SK: `${(prior.Item?.firstSeenAt as string | undefined) ?? now}#${job.canonicalId}`,
+          GSI2PK: `COMPANY#${mergedJob.companyId}`,
+          GSI2SK: `${(prior.Item?.firstSeenAt as string | undefined) ?? now}#${mergedJob.canonicalId}`,
         },
       }),
     );
     return {
       isNew: !previous,
-      materiallyChanged: Boolean(previous && isMaterialJobChange(previous, job)),
+      materiallyChanged: Boolean(previous && isMaterialJobChange(previous, mergedJob)),
+      job: mergedJob,
     };
   }
 
@@ -165,7 +177,7 @@ export class DynamoJobStorage implements JobStorage {
   }
 
   async queue(match: MatchResult, evaluation: EvaluationRecord, userId: string): Promise<boolean> {
-    const notificationKey = `${match.job.canonicalId}#${match.job.contentHash}`;
+    const notificationKey = `${match.job.dedupeKey ?? match.job.canonicalId}#${match.job.contentHash}`;
     const now = new Date().toISOString();
     try {
       await this.document.send(
@@ -329,6 +341,31 @@ export class DynamoJobStorage implements JobStorage {
     );
   }
 
+  async getProviderState(provider: MarketplaceProviderKind): Promise<ProviderState | undefined> {
+    const result = await this.document.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: { PK: `SOURCE#MARKETPLACE#${provider}`, SK: 'STATE' },
+      }),
+    );
+    return result.Item?.state as ProviderState | undefined;
+  }
+
+  async putProviderState(state: ProviderState): Promise<void> {
+    await this.document.send(
+      new PutCommand({
+        TableName: this.tableName,
+        Item: {
+          PK: `SOURCE#MARKETPLACE#${state.provider}`,
+          SK: 'STATE',
+          state,
+          GSI1PK: 'SOURCEHEALTH',
+          GSI1SK: `${state.status}#${state.lastFetchAt}`,
+        },
+      }),
+    );
+  }
+
   private async queryAll(
     input: QueryCommandInput,
     maximumItems?: number,
@@ -427,6 +464,7 @@ export class MemoryJobStorage implements JobStorage {
   >();
   private readonly pending = new Map<string, PendingNotification>();
   private readonly feedbackItems: UserFeedback[] = [];
+  private readonly providerStates = new Map<MarketplaceProviderKind, ProviderState>();
 
   acquireLease(owner: string, ttlSeconds: number): Promise<boolean> {
     if (this.lease && this.lease.expiresAt > Date.now()) return Promise.resolve(false);
@@ -437,16 +475,21 @@ export class MemoryJobStorage implements JobStorage {
     if (this.lease?.owner === owner) this.lease = undefined;
     return Promise.resolve();
   }
-  upsertJob(job: NormalizedJob): Promise<{ isNew: boolean; materiallyChanged: boolean }> {
-    const prior = this.jobs.get(job.canonicalId);
-    this.jobs.set(job.canonicalId, {
-      job,
-      companyId: job.companyId,
+  upsertJob(
+    job: NormalizedJob,
+  ): Promise<{ isNew: boolean; materiallyChanged: boolean; job: NormalizedJob }> {
+    const key = job.dedupeKey ?? job.canonicalId;
+    const prior = this.jobs.get(key);
+    const mergedJob = prior ? mergeJobEvidence(prior.job, job) : job;
+    this.jobs.set(key, {
+      job: mergedJob,
+      companyId: mergedJob.companyId,
       status: prior?.status === 'EXPIRED' ? 'REOPENED' : 'ACTIVE',
     });
     return Promise.resolve({
       isNew: !prior,
-      materiallyChanged: Boolean(prior && isMaterialJobChange(prior.job, job)),
+      materiallyChanged: Boolean(prior && isMaterialJobChange(prior.job, mergedJob)),
+      job: mergedJob,
     });
   }
   markMissingExpired(companyId: string, seenCanonicalIds: readonly string[]): Promise<number> {
@@ -461,7 +504,7 @@ export class MemoryJobStorage implements JobStorage {
     return Promise.resolve(expired);
   }
   queue(match: MatchResult, evaluation: EvaluationRecord, userId: string): Promise<boolean> {
-    const notificationKey = `${match.job.canonicalId}#${match.job.contentHash}`;
+    const notificationKey = `${match.job.dedupeKey ?? match.job.canonicalId}#${match.job.contentHash}`;
     if (this.pending.has(notificationKey)) return Promise.resolve(false);
     this.pending.set(notificationKey, {
       userId,
@@ -509,6 +552,31 @@ export class MemoryJobStorage implements JobStorage {
     this.feedbackItems.push(value);
     return Promise.resolve();
   }
+  getProviderState(provider: MarketplaceProviderKind): Promise<ProviderState | undefined> {
+    return Promise.resolve(this.providerStates.get(provider));
+  }
+  putProviderState(state: ProviderState): Promise<void> {
+    this.providerStates.set(state.provider, state);
+    return Promise.resolve();
+  }
+}
+
+export function mergeJobEvidence(
+  previous: Partial<NormalizedJob>,
+  current: NormalizedJob,
+): NormalizedJob {
+  const keepPrevious = previous.sourceKind === 'EMPLOYER' && current.sourceKind === 'MARKETPLACE';
+  const preferred = keepPrevious ? { ...current, ...previous } : current;
+  const sourceUrls = new Map<string, NonNullable<NormalizedJob['sourceUrls']>[number]>();
+  for (const source of [...(previous.sourceUrls ?? []), ...(current.sourceUrls ?? [])]) {
+    sourceUrls.set(source.url, source);
+  }
+  return {
+    ...current,
+    ...preferred,
+    sourceUrls: [...sourceUrls.values()],
+    dedupeKey: current.dedupeKey ?? previous.dedupeKey,
+  } as NormalizedJob;
 }
 
 export function isMaterialJobChange(
@@ -516,11 +584,21 @@ export function isMaterialJobChange(
   current: NormalizedJob,
 ): boolean {
   if (previous.contentHash === current.contentHash) return false;
+  if (previous.title !== current.title || previous.location !== current.location) {
+    return true;
+  }
+  if (previous.sourceKind === 'MARKETPLACE' && current.sourceKind === 'EMPLOYER') return true;
   if (
-    previous.title !== current.title ||
-    previous.location !== current.location ||
-    previous.applyUrl !== current.applyUrl ||
-    previous.sourceUrl !== current.sourceUrl
+    previous.sourceKind === 'MARKETPLACE' &&
+    current.sourceKind === 'MARKETPLACE' &&
+    previous.provider !== current.provider
+  ) {
+    return false;
+  }
+  if (
+    previous.sourceKind === 'EMPLOYER' &&
+    current.sourceKind === 'EMPLOYER' &&
+    (previous.applyUrl !== current.applyUrl || previous.sourceUrl !== current.sourceUrl)
   ) {
     return true;
   }

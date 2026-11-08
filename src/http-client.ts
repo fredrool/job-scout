@@ -40,6 +40,23 @@ export class HttpClient {
   ) {}
 
   async getJson<T>(url: string, headers: Readonly<Record<string, string>> = {}): Promise<T> {
+    return this.requestJson<T>(url, 'GET', headers);
+  }
+
+  async postJson<T>(
+    url: string,
+    body: unknown,
+    headers: Readonly<Record<string, string>> = {},
+  ): Promise<T> {
+    return this.requestJson<T>(url, 'POST', headers, JSON.stringify(body));
+  }
+
+  private async requestJson<T>(
+    url: string,
+    method: 'GET' | 'POST',
+    headers: Readonly<Record<string, string>>,
+    payload?: string,
+  ): Promise<T> {
     const parsedUrl = new URL(url);
     if (parsedUrl.protocol !== 'https:' && parsedUrl.hostname !== 'localhost') {
       throw new HttpError('Only HTTPS endpoints are allowed', undefined, url);
@@ -55,8 +72,14 @@ export class HttpClient {
 
       try {
         const response = await this.fetcher(url, {
-          method: 'GET',
-          headers: { accept: 'application/json', 'user-agent': 'job-scout/1.0', ...headers },
+          method,
+          headers: {
+            accept: 'application/json',
+            'user-agent': 'job-scout/1.0',
+            ...(payload ? { 'content-type': 'application/json' } : {}),
+            ...headers,
+          },
+          ...(payload ? { body: payload } : {}),
           signal: controller.signal,
         });
         if (!response.ok) {
@@ -77,8 +100,8 @@ export class HttpClient {
         if (Number.isFinite(declaredLength) && declaredLength > maximum) {
           throw new HttpError('Response exceeds configured size limit', response.status, url);
         }
-        const body = await readLimitedBody(response, maximum, url);
-        return JSON.parse(body) as T;
+        const responseBody = await readLimitedBody(response, maximum, url);
+        return JSON.parse(responseBody) as T;
       } catch (error) {
         lastError = error;
         if (

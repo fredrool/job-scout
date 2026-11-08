@@ -20,6 +20,7 @@ for (const required of [
   'index.js',
   'package.json',
   'config/companies.yaml',
+  'config/job-boards.yaml',
   'config/profile.yaml',
 ]) {
   if (!names.includes(required)) throw new Error(`Lambda artifact is missing ${required}`);

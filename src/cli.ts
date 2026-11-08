@@ -4,12 +4,13 @@ import { readFile } from 'node:fs/promises';
 import { NestFactory } from '@nestjs/core';
 import { parse } from 'yaml';
 import { AppModule } from './app.module.js';
-import { companySchema, type UserFeedback } from './domain.js';
+import { companySchema, marketplaceProviderKindSchema, type UserFeedback } from './domain.js';
 import { ScanPipeline } from './pipeline.js';
 import { CompanyRegistry } from './registry.js';
 import type { JobStorage } from './storage.js';
 import { ConfigService } from './config.js';
 import { DiscoveryService } from './discovery.js';
+import { MarketplaceDiscoveryService } from './marketplace-discovery.js';
 
 const usageText = [
   'Usage:',
@@ -21,6 +22,8 @@ const usageText = [
   '  npm run cli -- companies add-file <company-yaml-or-json>',
   '  npm run cli -- companies enable|disable <id>',
   '  npm run cli -- companies health',
+  '  npm run cli -- providers test <adzuna|remotive|jooble>',
+  '  npm run cli -- providers test-all',
   '  npm run cli -- feedback <canonical-id> <interested|applied|rejected|interviewing|offered|closed> [reason]',
 ].join('\n');
 
@@ -104,6 +107,23 @@ async function main(): Promise<void> {
   try {
     if (command === 'scan') {
       console.log(JSON.stringify(await app.get(ScanPipeline).run(), null, 2));
+      return;
+    }
+    if (command === 'providers' && (action === 'test' || action === 'test-all')) {
+      const provider = action === 'test' ? marketplaceProviderKindSchema.parse(args[2]) : undefined;
+      const result = await app
+        .get(MarketplaceDiscoveryService)
+        .discover({ ...(provider ? { provider } : {}), force: true });
+      console.log(
+        JSON.stringify(
+          {
+            jobsFound: result.jobs.length,
+            sources: result.sources,
+          },
+          null,
+          2,
+        ),
+      );
       return;
     }
     if (command === 'companies' && action === 'health') {

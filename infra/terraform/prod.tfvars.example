@@ -3,6 +3,12 @@ environment        = "prod"
 notification_email = "job-alerts@example.com"
 sender_email       = "job-scout@example.com"
 
+# Supply these through TF_VAR_* or protected GitHub environment secrets.
+# Never commit real marketplace credentials in this file.
+# adzuna_app_id  = "set-securely"
+# adzuna_app_key = "set-securely"
+# jooble_api_key = "set-securely" # Jooble is disabled by default.
+
 # Enable only after completing the production runbook.
 schedule_enabled              = false
 dry_run                       = true

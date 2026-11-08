@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
-import type { Company, JsonFeedMapping, ProviderJob, ProviderKind } from './domain.js';
+import type { Company, CompanyProviderKind, JsonFeedMapping, ProviderJob } from './domain.js';
 import { HttpClient } from './http-client.js';
 
 export interface JobProvider {
-  readonly kind: ProviderKind;
+  readonly kind: CompanyProviderKind;
   fetchJobs(company: Company): Promise<{ jobs: ProviderJob[]; complete: boolean }>;
 }
 
@@ -166,7 +166,7 @@ export class JsonFeedProvider implements JobProvider {
   }
 }
 
-function requireBoardToken(company: Company, provider: ProviderKind): string {
+function requireBoardToken(company: Company, provider: CompanyProviderKind): string {
   if (!company.boardToken) throw new Error(`Company ${company.id} has no ${provider} board token`);
   return company.boardToken;
 }

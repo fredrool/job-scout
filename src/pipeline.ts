@@ -7,6 +7,7 @@ import { applyLlmEvaluation, MatchingService } from './matching.js';
 import { CompanyRegistry } from './registry.js';
 import type { JobStorage } from './storage.js';
 import { SesNotificationService } from './notifications.js';
+import { deduplicateJobs, MarketplaceDiscoveryService } from './marketplace-discovery.js';
 
 export interface ScanSummary {
   runId: string;
@@ -25,6 +26,8 @@ export class ScanPipeline {
     @Inject(ConfigService) private readonly config: ConfigService,
     @Inject(CompanyRegistry) private readonly registry: CompanyRegistry,
     @Inject(DiscoveryService) private readonly discovery: DiscoveryService,
+    @Inject(MarketplaceDiscoveryService)
+    private readonly marketplaceDiscovery: MarketplaceDiscoveryService,
     @Inject(MatchingService) private readonly matching: MatchingService,
     @Inject(BedrockEvaluator) private readonly evaluator: BedrockEvaluator,
     @Inject('JOB_STORAGE') private readonly storage: JobStorage,
@@ -56,9 +59,16 @@ export class ScanPipeline {
         this.registry.loadProfile(),
         this.storage.feedback(this.config.values.USER_ID),
       ]);
-      const discovery = await this.discovery.discover({
-        companies: registry.companies.slice(0, this.config.values.MAX_REQUESTS_PER_SCAN),
-      });
+      const [marketplaceDiscovery, companyDiscovery] = await Promise.all([
+        this.marketplaceDiscovery.discover(),
+        this.discovery.discover({
+          companies: registry.companies.slice(0, this.config.values.MAX_REQUESTS_PER_SCAN),
+        }),
+      ]);
+      const discovery = {
+        jobs: deduplicateJobs([...marketplaceDiscovery.jobs, ...companyDiscovery.jobs]),
+        sources: [...marketplaceDiscovery.sources, ...companyDiscovery.sources],
+      };
       summary.discovered = discovery.jobs.length;
       summary.sourceFailures = discovery.sources.filter((source) => !source.healthy).length;
       for (const discoveredJob of discovery.jobs.slice(0, this.config.values.MAX_JOBS_PER_SCAN)) {
@@ -72,7 +82,7 @@ export class ScanPipeline {
         };
         const change = await this.storage.upsertJob(job);
         if (!change.isNew && !change.materiallyChanged) continue;
-        const match = this.matching.evaluate(job, profile, feedback);
+        const match = this.matching.evaluate(change.job, profile, feedback);
         if (!match.promising) continue;
         try {
           const evaluation = await this.evaluator.evaluate(match, profile);
@@ -99,7 +109,9 @@ export class ScanPipeline {
         }
       }
 
-      for (const source of discovery.sources.filter((item) => item.healthy && item.complete)) {
+      for (const source of discovery.sources.filter(
+        (item) => item.healthy && item.complete && item.authoritativeForExpiration,
+      )) {
         const seen = discovery.jobs
           .filter((job) => job.companyId === source.companyId)
           .map((job) => job.canonicalId);

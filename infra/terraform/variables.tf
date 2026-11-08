@@ -107,6 +107,30 @@ variable "presentation_timezone" {
   default     = "America/Toronto"
 }
 
+variable "adzuna_app_id" {
+  description = "Optional Adzuna application ID. Supply securely; do not commit it to tfvars."
+  type        = string
+  sensitive   = true
+  default     = null
+  nullable    = true
+}
+
+variable "adzuna_app_key" {
+  description = "Optional Adzuna application key. Supply securely; do not commit it to tfvars."
+  type        = string
+  sensitive   = true
+  default     = null
+  nullable    = true
+}
+
+variable "jooble_api_key" {
+  description = "Optional Jooble API key. Jooble remains disabled until quota is approved."
+  type        = string
+  sensitive   = true
+  default     = null
+  nullable    = true
+}
+
 variable "log_retention_days" {
   description = "CloudWatch log retention."
   type        = number

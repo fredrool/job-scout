@@ -15,12 +15,30 @@ Treat the company registry as an allowlist:
 6. Watch the first run's logs and disable the company on repeated errors,
    unexpected volume, site changes, or a removal request.
 
-An empty registry and a registry with every company disabled must return no
-jobs and send no job digest; this is the safe initial state.
+An empty company registry disables only secondary ATS discovery. Marketplace
+providers in `config/job-boards.yaml` remain the primary discovery mechanism.
 
 The built-in URL recognizer does not search the web or automatically discover
 new employers. Automatic employer discovery requires a separately configured,
 legitimate `CompanyDiscoverySource`; every candidate still requires review.
+
+## Marketplace provider workflow
+
+1. Review `config/job-boards.yaml`, current provider terms, attribution, and
+   account quota.
+2. Use `npm run cli -- providers test remotive` without credentials.
+3. Set Adzuna credentials only in the local environment or protected
+   deployment secrets, then run `npm run cli -- providers test adzuna`.
+4. Use `npm run cli -- providers test-all` to report each enabled source
+   independently. A failed provider must not suppress successful providers.
+5. Keep Jooble disabled until a region-specific key and its lifetime quota are
+   approved. Never commit keys to YAML, examples, or tfvars.
+
+Remotive public API data is delayed and must be attributed. Job Scout enforces
+a minimum six-hour polling interval and one request per poll. Provider polling
+timestamps and failures are persisted in DynamoDB. Marketplace searches are
+bounded and are never used as authoritative evidence that a previously seen
+job expired.
 
 ## Pre-deployment checklist
 

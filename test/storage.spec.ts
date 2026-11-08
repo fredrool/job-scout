@@ -119,4 +119,33 @@ describe('notification queue', () => {
       }),
     ).toBe(true);
   });
+
+  it('does not treat the same marketplace job on another board as a new notification', async () => {
+    const storage = new MemoryJobStorage();
+    const first = {
+      ...match('adzuna-1').job,
+      canonicalId: 'adzuna:1',
+      dedupeKey: 'acme-senior-engineer-remote',
+      provider: 'adzuna' as const,
+      sourceKind: 'MARKETPLACE' as const,
+      sourceName: 'Adzuna',
+      sourceUrl: 'https://www.adzuna.ca/details/1',
+      applyUrl: 'https://www.adzuna.ca/details/1',
+      contentHash: 'adzuna-hash',
+    };
+    const duplicate = {
+      ...first,
+      canonicalId: 'remotive:2',
+      provider: 'remotive' as const,
+      sourceName: 'Remotive',
+      sourceUrl: 'https://remotive.com/remote-jobs/2',
+      applyUrl: 'https://remotive.com/remote-jobs/2',
+      contentHash: 'remotive-hash',
+    };
+
+    expect((await storage.upsertJob(first)).isNew).toBe(true);
+    const second = await storage.upsertJob(duplicate);
+    expect(second.isNew).toBe(false);
+    expect(second.materiallyChanged).toBe(false);
+  });
 });

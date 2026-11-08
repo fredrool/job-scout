@@ -18,3 +18,11 @@ infra/terraform/crash.log
 .DS_Store
 .idea/
 .vscode/
+
+**/terraform.tfvars
+**/dev.tfvars
+**/prod.tfvars
+**/*.auto.tfvars
+!**/terraform.tfvars.example
+!**/dev.tfvars.example
+!**/prod.tfvars.example

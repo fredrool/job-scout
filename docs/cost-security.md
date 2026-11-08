@@ -24,6 +24,9 @@ profile, scoring, and model versions.
 Cost controls:
 
 - Keep the schedule disabled during setup and incidents.
+- Enforce each marketplace's persisted polling interval, page limit, and
+  request cap. Remotive is limited to one request every six hours. Adzuna and
+  Jooble quotas depend on the account and must be reviewed before enabling.
 - Keep prompts and requested output bounded.
 - Enforce the configured jobs, requests, runtime, and Bedrock-call caps.
 - Skip Bedrock and SES when there are no new jobs.
@@ -42,8 +45,11 @@ Cost controls:
 - DynamoDB is encrypted, point-in-time recovery and deletion protection default
   on, and access is scoped to one table and its indexes.
 - Terraform/provider versions are exact pins. Review upgrades intentionally.
-- Secrets and credentials must never be placed in tfvars, logs, job content,
-  Lambda environment variables, or Terraform outputs.
+- Secrets and credentials must never be placed in source, YAML, committed
+  tfvars, logs, job content, or Terraform outputs. Supply optional marketplace
+  credentials through protected runtime environment configuration or Secrets
+  Manager; remember that Terraform-managed Lambda environment values are
+  present in encrypted Terraform state.
 
 The notification and sender addresses are configuration, not authentication
 secrets, but GitHub environment secrets reduce accidental exposure in logs and
