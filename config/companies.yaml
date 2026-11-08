@@ -1,0 +1,34 @@
+companies:
+  - id: example-greenhouse
+    name: Example Greenhouse Company
+    enabled: false
+    careersUrl: https://boards.greenhouse.io/example
+    provider: greenhouse
+    boardToken: example
+  - id: example-lever
+    name: Example Lever Company
+    enabled: false
+    careersUrl: https://jobs.lever.co/example
+    provider: lever
+    boardToken: example
+  - id: example-ashby
+    name: Example Ashby Company
+    enabled: false
+    careersUrl: https://jobs.ashbyhq.com/example
+    provider: ashby
+    boardToken: example
+  - id: example-json
+    name: Example Official Feed Company
+    enabled: false
+    careersUrl: https://careers.example.com/jobs
+    provider: json
+    feedUrl: https://careers.example.com/jobs.json
+    feedMapping:
+      jobsPath: results
+      id: id
+      title: title
+      applyUrl: links.apply
+      sourceUrl: links.details
+      location: location.name
+      description: description
+      updatedAt: updated_at

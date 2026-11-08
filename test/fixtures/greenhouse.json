@@ -1,0 +1,12 @@
+{
+  "jobs": [
+    {
+      "id": 101,
+      "title": "Senior TypeScript Engineer",
+      "absolute_url": "https://boards.greenhouse.io/example/jobs/101?utm_source=test",
+      "location": { "name": "Remote" },
+      "content": "<p>Build reliable services.</p>",
+      "updated_at": "2026-01-02T03:04:05Z"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "results": [
+    {
+      "job": { "id": 401, "title": "Data Engineer" },
+      "links": {
+        "details": "https://careers.example.com/jobs/401",
+        "apply": "https://careers.example.com/jobs/401/apply"
+      },
+      "office": { "label": "Remote" },
+      "body": "Build data systems.",
+      "modified": "2026-01-04T00:00:00Z"
+    }
+  ]
+}

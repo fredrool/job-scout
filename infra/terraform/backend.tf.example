@@ -1,0 +1,11 @@
+# Copy to backend.tf only after creating the encrypted, versioned state bucket.
+# Replace every placeholder; never commit credentials.
+terraform {
+  backend "s3" {
+    bucket         = "REPLACE_ME-job-scout-terraform-state"
+    key            = "REPLACE_ME_ENV/job-scout.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    use_lockfile = true
+  }
+}

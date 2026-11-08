@@ -1,0 +1,23 @@
+aws_region         = "us-east-1"
+environment        = "prod"
+notification_email = "job-alerts@example.com"
+sender_email       = "job-scout@example.com"
+
+# Enable only after completing the production runbook.
+schedule_enabled              = false
+dry_run                       = true
+score_threshold               = 80
+digest_limit                  = 25
+max_bedrock_calls_per_scan    = 50
+max_jobs_per_scan             = 1000
+max_requests_per_scan         = 200
+presentation_timezone         = "America/Toronto"
+dynamodb_deletion_protection = true
+dynamodb_point_in_time_recovery = true
+log_retention_days            = 90
+enable_budget                 = true
+monthly_budget_usd            = 25
+
+enable_github_oidc = false
+github_repository  = "YOUR_GITHUB_OWNER/job-scout"
+terraform_state_bucket_name = "REPLACE_ME-job-scout-terraform-state"

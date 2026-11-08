@@ -1,0 +1,51 @@
+version: '1'
+userId: default
+name: Senior full-stack and platform engineer
+targetTitles:
+  - Senior Full-Stack Engineer
+  - Senior Product Engineer
+  - Staff Software Engineer
+  - Platform Engineer
+  - Software Architect
+skills:
+  - name: TypeScript
+    proficiency: expert
+    evidence: Production full-stack engineering
+  - name: React
+    proficiency: expert
+    evidence: Production product engineering
+  - name: Node.js
+    proficiency: expert
+    evidence: Production backend services
+  - name: AWS
+    proficiency: advanced
+    evidence: Production cloud architecture
+  - name: Java
+    proficiency: advanced
+    evidence: Production Spring Boot services
+  - name: Bedrock
+    proficiency: learning
+    evidence: Current applied AI projects
+workHistorySummary: 25+ years building secure, performant products and distributed systems.
+locations:
+  - Quebec
+  - Canada
+remoteOnly: true
+preferredRegions:
+  - Quebec
+  - Canada
+  - Employers explicitly hiring Canadians
+compensation:
+  currency: CAD
+hardExclusions:
+  - mandatory on-site
+  - mandatory hybrid
+learningInterests:
+  - LLM
+  - Bedrock
+  - RAG
+  - MCP
+  - LangChain
+  - LangGraph
+feedbackPreferences:
+  rejectionPenalty: 4

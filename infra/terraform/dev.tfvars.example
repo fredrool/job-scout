@@ -1,0 +1,23 @@
+aws_region         = "us-east-1"
+environment        = "dev"
+notification_email = "job-alerts-dev@example.com"
+sender_email       = "job-scout-dev@example.com"
+
+# Keep disabled until the registry, SES identities, and Bedrock access are verified.
+schedule_enabled              = false
+dry_run                       = true
+score_threshold               = 80
+digest_limit                  = 25
+max_bedrock_calls_per_scan    = 50
+max_jobs_per_scan             = 1000
+max_requests_per_scan         = 200
+presentation_timezone         = "America/Toronto"
+dynamodb_deletion_protection = true
+enable_budget                 = true
+monthly_budget_usd            = 10
+
+# Bootstrap once with trusted AWS credentials, then place the output role ARN
+# in the GitHub "dev" environment as AWS_ROLE_ARN.
+enable_github_oidc = false
+github_repository  = "YOUR_GITHUB_OWNER/job-scout"
+terraform_state_bucket_name = "REPLACE_ME-job-scout-terraform-state"

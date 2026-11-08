@@ -1,0 +1,107 @@
+# Job Scout
+
+Job Scout is a scheduled AWS Lambda application that collects jobs from an
+explicit company registry, ranks them with Amazon Bedrock, stores state in
+DynamoDB, and sends a digest with Amazon SES.
+
+This repository contains deployment-ready infrastructure and automation, but
+nothing in it deploys automatically. The schedule defaults to disabled.
+
+## Local development
+
+Requirements:
+
+- Node.js 22 and npm
+- Terraform 1.10.5
+- AWS CLI v2 only when performing an authorized preflight or deployment
+
+Install and run the application checks:
+
+```sh
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run cli -- --help
+npm run package
+```
+
+Copy `.env.example` to `.env` (or export the values through your shell).
+`NOTIFICATION_EMAIL` and `SENDER_EMAIL` are configuration only and are never
+read from the profile. Useful local commands:
+
+```sh
+npm run cli -- companies validate
+npm run cli -- companies discover "Example Inc" https://jobs.example.com
+npm run cli -- companies add example-inc "Example Inc" greenhouse https://boards.greenhouse.io/example example
+npm run cli -- scan dry-run
+npm run cli -- feedback JOB_ID interested
+```
+
+New companies are always added disabled. Review terms, ownership, board token,
+and a fixture before enabling one in `config/companies.yaml`. The discovery
+command only proposes evidence; it never enrolls a source.
+
+The packaging command must produce
+`.artifacts/job-scout-lambda.zip`. `scripts/package-lambda.mjs` is the
+dependency-free deterministic ZIP utility for a built `dist/lambda` directory:
+
+```sh
+node scripts/package-lambda.mjs dist/lambda .artifacts/job-scout-lambda.zip
+```
+
+Run all deployment preparation checks without changing AWS:
+
+```sh
+node scripts/deploy-prep.mjs
+```
+
+## Terraform
+
+Copy an example and replace every placeholder:
+
+```sh
+cd infra/terraform
+cp dev.tfvars.example dev.tfvars
+terraform init -backend=false
+terraform fmt -check -recursive
+terraform validate
+terraform plan -var-file=dev.tfvars
+```
+
+`plan` reads the Lambda ZIP, so package first. Do not enable the schedule until
+the registry, model access, and SES identities have been checked. An empty
+registry, or a registry in which every company is disabled, intentionally
+produces no jobs.
+
+Safe manual invocation and logs:
+
+```sh
+aws lambda invoke --region us-east-1 --function-name job-scout-dev response.json
+aws logs tail /aws/lambda/job-scout-dev --follow --since 1h
+```
+
+To remove the stack, first back up DynamoDB data, deliberately disable table
+deletion protection, review the destroy plan, then run
+`terraform destroy -var-file=dev.tfvars`. This permanently deletes findings,
+feedback, evaluation cache, and notification history.
+
+Remote state is optional. Copy `backend.tf.example` to `backend.tf`, replace
+its placeholders, and bootstrap its encrypted, versioned S3 bucket outside
+this stack before initializing. Terraform's native S3 lockfile is enabled.
+
+## Delivery
+
+- `.github/workflows/ci.yml` runs application checks, packaging, Terraform
+  formatting, and validation.
+- `.github/workflows/deploy.yml` is manual-only, uses GitHub OIDC (no static AWS
+  keys), and is gated by a protected `dev` or `prod` GitHub environment.
+- Configure required reviewers on both GitHub environments. Set environment
+  variables `AWS_ROLE_ARN`, `TF_STATE_BUCKET`, and optionally
+  `AWS_REGION` and `SCHEDULE_ENABLED`, plus secrets `NOTIFICATION_EMAIL` and
+  `SENDER_EMAIL`.
+
+See [architecture](docs/architecture.md), the [runbook](docs/runbook.md), and
+[cost and security guidance](docs/cost-security.md). No deployment or live AWS
+API call has been performed by the repository setup.
