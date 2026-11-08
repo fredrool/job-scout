@@ -99,6 +99,14 @@ describe('ScanPipeline integration', () => {
     const evaluator = {
       resetRun: vi.fn(),
       hasCapacity: vi.fn(() => true),
+      getRunStats: vi.fn(() => ({
+        apiCalls: 1,
+        cacheHits: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        estimatedCostUsd: 0,
+        parseRetries: 0,
+      })),
       evaluate,
     } as unknown as BedrockEvaluator;
     const send = vi.fn().mockResolvedValue('ses-id');
@@ -176,6 +184,14 @@ describe('ScanPipeline integration', () => {
       {
         resetRun: vi.fn(),
         hasCapacity: vi.fn(() => true),
+        getRunStats: vi.fn(() => ({
+          apiCalls: 0,
+          cacheHits: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          estimatedCostUsd: 0,
+          parseRetries: 0,
+        })),
         evaluate: vi.fn(),
       } as unknown as BedrockEvaluator,
       storage,

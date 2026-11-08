@@ -194,6 +194,8 @@ export interface MatchResult {
   promising: boolean;
 }
 
+const RECOMMENDATION_MAX = 800;
+
 export const llmEvaluationSchema = z
   .object({
     strengths: z.array(z.string()),
@@ -203,10 +205,27 @@ export const llmEvaluationSchema = z
     legitimacySignals: z.array(z.string()),
     fitScore: z.number().min(0).max(100),
     confidence: z.number().min(0).max(1),
-    recommendation: z.string().min(1).max(800),
+    recommendation: z.preprocess(
+      (value) => truncateRecommendation(value),
+      z.string().min(1).max(RECOMMENDATION_MAX),
+    ),
   })
   .strict();
 export type LlmEvaluation = z.infer<typeof llmEvaluationSchema>;
+
+export function truncateRecommendation(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  if (value.length <= RECOMMENDATION_MAX) return value;
+  return `${value.slice(0, RECOMMENDATION_MAX - 3)}...`;
+}
+
+export function coerceLlmEvaluation(
+  input: unknown,
+): { ok: true; evaluation: LlmEvaluation } | { ok: false; error: string } {
+  const parsed = llmEvaluationSchema.safeParse(input);
+  if (parsed.success) return { ok: true, evaluation: parsed.data };
+  return { ok: false, error: parsed.error.issues.map((issue) => issue.message).join('; ') };
+}
 
 export type FeedbackState =
   'interested' | 'applied' | 'rejected' | 'interviewing' | 'offered' | 'closed';

@@ -185,7 +185,6 @@ resource "aws_lambda_function" "job_scout" {
     variables = merge(
       {
         AWS_NODEJS_CONNECTION_REUSE_ENABLED = "1"
-        AWS_REGION                          = var.aws_region
         NODE_ENV                            = "production"
         MOCK_MODE                           = "false"
         BEDROCK_MODEL_ID                    = var.bedrock_inference_profile_id

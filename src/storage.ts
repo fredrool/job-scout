@@ -125,7 +125,8 @@ export class DynamoJobStorage implements JobStorage {
         new DeleteCommand({
           TableName: this.tableName,
           Key: { PK: 'LOCK#SCAN', SK: 'LOCK' },
-          ConditionExpression: 'owner = :owner',
+          ConditionExpression: '#owner = :owner',
+          ExpressionAttributeNames: { '#owner': 'owner' },
           ExpressionAttributeValues: { ':owner': owner },
         }),
       );

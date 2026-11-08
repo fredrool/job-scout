@@ -15,6 +15,7 @@ export interface ScanSummary {
   runId: string;
   discovered: number;
   evaluated: number;
+  evaluationsFailed: number;
   queued: number;
   emailed: number;
   skippedBecauseLocked: boolean;
@@ -22,6 +23,13 @@ export interface ScanSummary {
   dryRun: boolean;
   pendingDeferred: number;
   pendingProcessed: number;
+  pendingRetryQueue: number;
+  bedrockApiCalls: number;
+  bedrockCacheHits: number;
+  bedrockInputTokens: number;
+  bedrockOutputTokens: number;
+  bedrockEstimatedCostUsd: number;
+  bedrockParseRetries: number;
 }
 
 type EvaluationStopReason = 'continue' | 'bedrock_cap' | 'deadline' | 'evaluation_failed';
@@ -53,6 +61,14 @@ export class ScanPipeline {
       dryRun: this.config.values.DRY_RUN,
       pendingDeferred: 0,
       pendingProcessed: 0,
+      evaluationsFailed: 0,
+      pendingRetryQueue: 0,
+      bedrockApiCalls: 0,
+      bedrockCacheHits: 0,
+      bedrockInputTokens: 0,
+      bedrockOutputTokens: 0,
+      bedrockEstimatedCostUsd: 0,
+      bedrockParseRetries: 0,
     };
     const leaseSeconds = Math.ceil(this.config.values.MAX_RUNTIME_MS / 1000) + 30;
     if (!(await this.storage.acquireLease(runId, leaseSeconds))) {
@@ -143,8 +159,24 @@ export class ScanPipeline {
       }
       return summary;
     } finally {
-      await this.storage.releaseLease(runId);
+      if (!summary.skippedBecauseLocked) {
+        await this.attachRunMetrics(summary);
+        await this.storage.releaseLease(runId);
+      }
     }
+  }
+
+  private async attachRunMetrics(summary: ScanSummary): Promise<void> {
+    const bedrock = this.evaluator.getRunStats();
+    summary.bedrockApiCalls = bedrock.apiCalls;
+    summary.bedrockCacheHits = bedrock.cacheHits;
+    summary.bedrockInputTokens = bedrock.inputTokens;
+    summary.bedrockOutputTokens = bedrock.outputTokens;
+    summary.bedrockEstimatedCostUsd = bedrock.estimatedCostUsd;
+    summary.bedrockParseRetries = bedrock.parseRetries;
+    summary.pendingRetryQueue = (
+      await this.storage.listPendingEvaluations(this.config.values.USER_ID, 10_000)
+    ).length;
   }
 
   private async drainPendingEvaluations(
@@ -251,6 +283,7 @@ export class ScanPipeline {
           error: message,
         }),
       );
+      summary.evaluationsFailed += 1;
       return 'evaluation_failed';
     }
   }

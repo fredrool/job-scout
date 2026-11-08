@@ -89,6 +89,14 @@ describe('pending evaluation backlog', () => {
     const evaluator = {
       resetRun: vi.fn(),
       hasCapacity: vi.fn(() => calls < values.MAX_BEDROCK_CALLS_PER_SCAN),
+      getRunStats: vi.fn(() => ({
+        apiCalls: calls,
+        cacheHits: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        estimatedCostUsd: 0,
+        parseRetries: 0,
+      })),
       evaluate,
     } as unknown as BedrockEvaluator;
 
@@ -208,6 +216,14 @@ describe('pending evaluation backlog', () => {
       {
         resetRun: vi.fn(),
         hasCapacity: vi.fn(() => true),
+        getRunStats: vi.fn(() => ({
+          apiCalls: 0,
+          cacheHits: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          estimatedCostUsd: 0,
+          parseRetries: 0,
+        })),
         evaluate,
       } as unknown as BedrockEvaluator,
       storage,

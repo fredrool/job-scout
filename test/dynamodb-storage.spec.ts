@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
+  DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
@@ -51,6 +52,37 @@ describe('DynamoJobStorage pagination', () => {
       PK: 'FEEDBACK#default',
       SK: 'one',
     });
+  });
+});
+
+describe('DynamoJobStorage scan lease', () => {
+  it('aliases reserved attribute names when releasing a lease', async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const storage = new DynamoJobStorage('table', new DynamoDBClient({}), {
+      send,
+    } as unknown as DynamoDBDocumentClient);
+
+    await storage.releaseLease('run-123');
+
+    const command: unknown = send.mock.calls[0]?.[0];
+    expect(command).toBeInstanceOf(DeleteCommand);
+    const input = (command as DeleteCommand).input;
+    expect(input.ConditionExpression).toBe('#owner = :owner');
+    expect(input.ExpressionAttributeNames).toEqual({ '#owner': 'owner' });
+    expect(input.ExpressionAttributeValues).toEqual({ ':owner': 'run-123' });
+  });
+
+  it('ignores missing or foreign leases when releasing', async () => {
+    const send = vi.fn().mockRejectedValue(
+      Object.assign(new Error('The conditional request failed'), {
+        name: 'ConditionalCheckFailedException',
+      }),
+    );
+    const storage = new DynamoJobStorage('table', new DynamoDBClient({}), {
+      send,
+    } as unknown as DynamoDBDocumentClient);
+
+    await expect(storage.releaseLease('not-owner')).resolves.toBeUndefined();
   });
 });
 
