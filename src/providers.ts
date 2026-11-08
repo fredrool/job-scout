@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import type { Company, CompanyProviderKind, JsonFeedMapping, ProviderJob } from './domain.js';
 import { HttpClient } from './http-client.js';
@@ -24,7 +24,7 @@ const greenhouseResponseSchema = z.object({
 @Injectable()
 export class GreenhouseProvider implements JobProvider {
   readonly kind = 'greenhouse' as const;
-  constructor(private readonly http: HttpClient) {}
+  constructor(@Inject(HttpClient) private readonly http: HttpClient) {}
 
   async fetchJobs(company: Company): Promise<{ jobs: ProviderJob[]; complete: boolean }> {
     const token = requireBoardToken(company, this.kind);
@@ -63,7 +63,7 @@ const leverResponseSchema = z.array(
 @Injectable()
 export class LeverProvider implements JobProvider {
   readonly kind = 'lever' as const;
-  constructor(private readonly http: HttpClient) {}
+  constructor(@Inject(HttpClient) private readonly http: HttpClient) {}
 
   async fetchJobs(company: Company): Promise<{ jobs: ProviderJob[]; complete: boolean }> {
     const token = requireBoardToken(company, this.kind);
@@ -104,7 +104,7 @@ const ashbyResponseSchema = z.object({
 @Injectable()
 export class AshbyProvider implements JobProvider {
   readonly kind = 'ashby' as const;
-  constructor(private readonly http: HttpClient) {}
+  constructor(@Inject(HttpClient) private readonly http: HttpClient) {}
 
   async fetchJobs(company: Company): Promise<{ jobs: ProviderJob[]; complete: boolean }> {
     const token = requireBoardToken(company, this.kind);
@@ -131,7 +131,7 @@ export class AshbyProvider implements JobProvider {
 @Injectable()
 export class JsonFeedProvider implements JobProvider {
   readonly kind = 'json' as const;
-  constructor(private readonly http: HttpClient) {}
+  constructor(@Inject(HttpClient) private readonly http: HttpClient) {}
 
   async fetchJobs(company: Company): Promise<{ jobs: ProviderJob[]; complete: boolean }> {
     if (!company.feedUrl || !company.feedMapping) {

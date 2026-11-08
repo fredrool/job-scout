@@ -99,10 +99,26 @@ export class DiscoveryService {
           maxResponseBytes: config.values.HTTP_MAX_RESPONSE_BYTES,
         }),
     },
-    GreenhouseProvider,
-    LeverProvider,
-    AshbyProvider,
-    JsonFeedProvider,
+    {
+      provide: GreenhouseProvider,
+      inject: [HttpClient],
+      useFactory: (http: HttpClient): GreenhouseProvider => new GreenhouseProvider(http),
+    },
+    {
+      provide: LeverProvider,
+      inject: [HttpClient],
+      useFactory: (http: HttpClient): LeverProvider => new LeverProvider(http),
+    },
+    {
+      provide: AshbyProvider,
+      inject: [HttpClient],
+      useFactory: (http: HttpClient): AshbyProvider => new AshbyProvider(http),
+    },
+    {
+      provide: JsonFeedProvider,
+      inject: [HttpClient],
+      useFactory: (http: HttpClient): JsonFeedProvider => new JsonFeedProvider(http),
+    },
     {
       provide: JOB_PROVIDERS,
       inject: [GreenhouseProvider, LeverProvider, AshbyProvider, JsonFeedProvider],

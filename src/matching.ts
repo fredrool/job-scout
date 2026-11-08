@@ -8,6 +8,11 @@ import type {
   SearchProfile,
   UserFeedback,
 } from './domain.js';
+import {
+  hasEngineeringTitleSignal,
+  isClearlyUnrelatedEngineeringRole,
+  roleAlignmentScore,
+} from './role-prefilter.js';
 
 const seniorTerms = ['senior', 'staff', 'principal', 'lead', 'architect'];
 const unsuitableTerms = ['intern', 'junior', 'entry level', 'new grad'];
@@ -118,14 +123,11 @@ export class MatchingService {
     if (learningMatches.length) reasons.push(`Learning interests: ${learningMatches.join(', ')}`);
     if (transferable > 0) reasons.push('Transferable production experience is relevant');
 
-    const roleMatch = profile.targetTitles.some((title) => {
-      const meaningful = title
-        .toLowerCase()
-        .split(/\s+/)
-        .filter((word) => word.length > 3);
-      return meaningful.some((word) => job.title.toLowerCase().includes(word));
-    });
-    const senior = seniorTerms.some((term) => job.title.toLowerCase().includes(term));
+    const unrelatedRole = isClearlyUnrelatedEngineeringRole(job.title);
+    const rolePoints = roleAlignmentScore(job.title, profile.targetTitles);
+    const engineeringTitle = hasEngineeringTitleSignal(job.title);
+    const senior =
+      seniorTerms.some((term) => job.title.toLowerCase().includes(term)) && engineeringTitle;
     const unsuitable = unsuitableTerms.some((term) => job.title.toLowerCase().includes(term));
     const hardExcluded = profile.hardExclusions.some((term) => text.includes(term.toLowerCase()));
     const interestMatches = profile.learningInterests.filter((interest) =>
@@ -138,8 +140,8 @@ export class MatchingService {
 
     const breakdown: ScoreBreakdown = {
       skills: skillPoints,
-      role: roleMatch ? 20 : 5,
-      seniority: senior ? 15 : unsuitable ? 0 : 8,
+      role: rolePoints,
+      seniority: senior ? 12 : unsuitable ? 0 : engineeringTitle ? 6 : 0,
       remote: remoteEligibility === 'INELIGIBLE' ? 0 : 15,
       compensation: extractSalary(text) ? 5 : 2,
       interests: Math.min(5, interestMatches * 2),
@@ -159,12 +161,15 @@ export class MatchingService {
       breakdown.interests +
       breakdown.legitimacy +
       breakdown.feedback;
-    const score = Math.max(0, Math.min(100, rawScore));
-    const eligible = remoteEligibility !== 'INELIGIBLE' && !unsuitable && !hardExcluded;
+    let score = Math.max(0, Math.min(100, rawScore));
+    const hasSkillEvidence = skillPoints >= 6 || transferable >= 2;
+    if (!hasSkillEvidence) {
+      score = Math.min(score, 58);
+    }
+    const eligible =
+      remoteEligibility !== 'INELIGIBLE' && !unsuitable && !hardExcluded && !unrelatedRole;
     const promising =
-      eligible &&
-      score >= 45 &&
-      (roleMatch || skillPoints >= 5 || transferable > 0 || interestMatches > 0);
+      eligible && score >= 45 && hasSkillEvidence && engineeringTitle && rolePoints >= 8;
     return {
       job,
       score,
