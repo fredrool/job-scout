@@ -228,13 +228,20 @@ export class ScanPipeline {
       const message = error instanceof Error ? error.message : String(error);
       const jobKey = match.job.dedupeKey ?? match.job.canonicalId;
       if (options.deferOnError !== false) {
-        await this.enqueueDeferred(match.job, profile.version, 'evaluation_error', summary);
+        await this.enqueueDeferred(
+          match.job,
+          profile.version,
+          'evaluation_error',
+          summary,
+          message,
+        );
+      } else {
+        await this.storage.recordPendingEvaluationFailure(
+          this.config.values.USER_ID,
+          jobKey,
+          message,
+        );
       }
-      await this.storage.recordPendingEvaluationFailure(
-        this.config.values.USER_ID,
-        jobKey,
-        message,
-      );
       console.error(
         JSON.stringify({
           level: 'error',
@@ -289,12 +296,14 @@ export class ScanPipeline {
     profileVersion: string,
     reason: string,
     summary: ScanSummary,
+    failureError?: string,
   ): Promise<void> {
     await this.storage.enqueuePendingEvaluation(
       this.config.values.USER_ID,
       job,
       profileVersion,
       reason,
+      failureError,
     );
     summary.pendingDeferred += 1;
   }

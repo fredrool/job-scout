@@ -78,6 +78,7 @@ export interface JobStorage extends EvaluationCache {
     job: NormalizedJob,
     profileVersion: string,
     reason?: string,
+    failureError?: string,
   ): Promise<void>;
   listPendingEvaluations(userId: string, limit: number): Promise<PendingEvaluation[]>;
   removePendingEvaluation(userId: string, jobKey: string): Promise<void>;
@@ -393,6 +394,7 @@ export class DynamoJobStorage implements JobStorage {
     job: NormalizedJob,
     profileVersion: string,
     reason?: string,
+    failureError?: string,
   ): Promise<void> {
     const jobKey = job.dedupeKey ?? job.canonicalId;
     const now = new Date().toISOString();
@@ -403,6 +405,7 @@ export class DynamoJobStorage implements JobStorage {
       }),
     );
     const prior = existing.Item as PendingEvaluation | undefined;
+    const attempts = (prior?.attempts ?? 0) + (failureError ? 1 : 0);
     await this.document.send(
       new PutCommand({
         TableName: this.tableName,
@@ -414,8 +417,9 @@ export class DynamoJobStorage implements JobStorage {
           profileVersion,
           job,
           createdAt: prior?.createdAt ?? now,
-          attempts: prior?.attempts ?? 0,
+          attempts,
           ...(reason ? { reason } : {}),
+          ...(failureError ? { lastError: failureError.slice(0, 500) } : {}),
           GSI1PK: `EVALPENDING#${userId}`,
           GSI1SK: prior?.createdAt ?? now,
         },
@@ -459,19 +463,26 @@ export class DynamoJobStorage implements JobStorage {
     jobKey: string,
     error: string,
   ): Promise<void> {
-    await this.document.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: { PK: `EVALPENDING#${userId}`, SK: jobKey },
-        UpdateExpression:
-          'SET attempts = if_not_exists(attempts, :zero) + :one, lastError = :error',
-        ExpressionAttributeValues: {
-          ':zero': 0,
-          ':one': 1,
-          ':error': error.slice(0, 500),
-        },
-      }),
-    );
+    try {
+      await this.document.send(
+        new UpdateCommand({
+          TableName: this.tableName,
+          Key: { PK: `EVALPENDING#${userId}`, SK: jobKey },
+          UpdateExpression:
+            'SET attempts = if_not_exists(attempts, :zero) + :one, lastError = :error',
+          ConditionExpression: 'attribute_exists(#job)',
+          ExpressionAttributeNames: { '#job': 'job' },
+          ExpressionAttributeValues: {
+            ':zero': 0,
+            ':one': 1,
+            ':error': error.slice(0, 500),
+          },
+        }),
+      );
+    } catch (caught) {
+      if ((caught as { name?: string }).name === 'ConditionalCheckFailedException') return;
+      throw caught;
+    }
   }
 
   private async queryAll(
@@ -677,19 +688,22 @@ export class MemoryJobStorage implements JobStorage {
     job: NormalizedJob,
     profileVersion: string,
     reason?: string,
+    failureError?: string,
   ): Promise<void> {
     const jobKey = job.dedupeKey ?? job.canonicalId;
     const key = this.pendingEvalKey(userId, jobKey);
     const prior = this.pendingEvaluations.get(key);
     const createdAt = prior?.createdAt ?? new Date().toISOString();
+    const attempts = (prior?.attempts ?? 0) + (failureError ? 1 : 0);
     this.pendingEvaluations.set(key, {
       userId,
       jobKey,
       profileVersion,
       job,
       createdAt,
-      attempts: prior?.attempts ?? 0,
+      attempts,
       ...(reason ? { reason } : {}),
+      ...(failureError ? { lastError: failureError.slice(0, 500) } : {}),
     });
     return Promise.resolve();
   }
