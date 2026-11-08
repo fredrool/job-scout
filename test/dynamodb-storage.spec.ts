@@ -8,7 +8,22 @@ import {
   UpdateCommand,
   type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb';
+import type { EvaluationRecord } from '../src/ai.js';
+import type { MatchResult } from '../src/domain.js';
+import type { NotificationBatch, PendingNotification } from '../src/storage.js';
 import { DynamoJobStorage } from '../src/storage.js';
+
+function assertUpdateUsesResultAlias(command: UpdateCommand): void {
+  expect(command.input.UpdateExpression).toContain('#result = :result');
+  expect(command.input.ExpressionAttributeNames).toMatchObject({
+    '#result': 'result',
+  });
+}
+
+function assertUpdateAliasesStatus(command: UpdateCommand): void {
+  expect(command.input.ExpressionAttributeNames).toMatchObject({ '#status': 'status' });
+  expect(command.input.UpdateExpression).toContain('#status');
+}
 
 describe('DynamoJobStorage pagination', () => {
   it('follows LastEvaluatedKey for multi-page queries', async () => {
@@ -165,5 +180,161 @@ describe('DynamoJobStorage pending evaluation failures', () => {
     const command: unknown = send.mock.calls[0]?.[0];
     expect(command).toBeInstanceOf(UpdateCommand);
     expect((command as UpdateCommand).input.UpdateExpression).toContain('attempts');
+  });
+});
+
+describe('DynamoJobStorage notification lifecycle updates', () => {
+  const send = vi.fn().mockResolvedValue({});
+  const storage = new DynamoJobStorage('table', new DynamoDBClient({}), {
+    send,
+  } as unknown as DynamoDBDocumentClient);
+
+  const evaluation: EvaluationRecord = {
+    cacheKey: 'cache',
+    evaluation: {
+      strengths: [],
+      weaknesses: [],
+      mustHaveGaps: [],
+      remoteEligibility: 'CONFIRMED',
+      legitimacySignals: [],
+      fitScore: 90,
+      confidence: 1,
+      recommendation: 'Apply',
+    },
+    inputTokens: 0,
+    outputTokens: 0,
+    estimatedCostUsd: 0,
+    modelId: 'mock',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  const match: MatchResult = {
+    job: {
+      canonicalId: 'job-1',
+      dedupeKey: 'job-1',
+      companyId: 'acme',
+      provider: 'greenhouse',
+      externalId: '1',
+      title: 'Senior Engineer',
+      location: 'Remote — Canada',
+      description: 'TypeScript',
+      applyUrl: 'https://example.com/apply',
+      sourceUrl: 'https://example.com/job',
+      updatedAt: null,
+      contentHash: 'hash-1',
+    },
+    score: 90,
+    preliminaryScore: 80,
+    breakdown: {
+      skills: 20,
+      role: 20,
+      seniority: 10,
+      remote: 15,
+      compensation: 0,
+      interests: 0,
+      legitimacy: 10,
+      feedback: 0,
+    },
+    remoteEligibility: 'CONFIRMED',
+    reasons: [],
+    gaps: [],
+    salary: null,
+    eligible: true,
+    promising: true,
+  };
+
+  const pendingItem: PendingNotification = {
+    userId: 'default',
+    notificationKey: 'job-1#hash-1',
+    match,
+    evaluation,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    attempts: 1,
+  };
+
+  const batch: NotificationBatch = {
+    batchId: 'batch-uuid',
+    userId: 'default',
+    status: 'SENDING',
+    items: [pendingItem],
+    attempts: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  it('aliases reserved result on completeBatch notification and batch updates', async () => {
+    send.mockClear();
+    await storage.completeBatch(batch, 'ses-message-id');
+
+    const updates = send.mock.calls
+      .map((call) => call[0] as unknown)
+      .filter((command): command is UpdateCommand => command instanceof UpdateCommand);
+
+    expect(updates.length).toBeGreaterThanOrEqual(2);
+    const notifyUpdate = updates.find((command) => command.input.Key?.PK === 'NOTIFY#default');
+    const batchUpdate = updates.find((command) => command.input.Key?.PK === 'BATCH#default');
+    if (!notifyUpdate || !batchUpdate) {
+      throw new Error('Expected NOTIFY and BATCH UpdateCommands');
+    }
+    assertUpdateUsesResultAlias(notifyUpdate);
+    assertUpdateUsesResultAlias(batchUpdate);
+    assertUpdateAliasesStatus(notifyUpdate);
+    assertUpdateAliasesStatus(batchUpdate);
+  });
+
+  it('aliases reserved result on failBatch batch metadata update', async () => {
+    send.mockClear();
+    await storage.failBatch(batch, 'SES throttled');
+
+    const updates = send.mock.calls
+      .map((call) => call[0] as unknown)
+      .filter((command): command is UpdateCommand => command instanceof UpdateCommand);
+
+    const notifyRevert = updates.find((command) => command.input.Key?.PK === 'NOTIFY#default');
+    const batchUpdate = updates.find((command) => command.input.Key?.PK === 'BATCH#default');
+    if (!notifyRevert || !batchUpdate) {
+      throw new Error('Expected NOTIFY revert and BATCH UpdateCommands');
+    }
+    expect(notifyRevert.input.UpdateExpression).not.toContain('#result');
+    assertUpdateUsesResultAlias(batchUpdate);
+    assertUpdateAliasesStatus(batchUpdate);
+    assertUpdateAliasesStatus(notifyRevert);
+  });
+
+  it('claimBatch marks notifications SENDING with status alias only', async () => {
+    send.mockClear();
+    send
+      .mockResolvedValueOnce({ Items: [] })
+      .mockResolvedValueOnce({
+        Items: [
+          {
+            PK: 'NOTIFY#default',
+            SK: 'job-1#hash-1',
+            notificationKey: 'job-1#hash-1',
+            userId: 'default',
+            status: 'PENDING',
+            match,
+            evaluation,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            attempts: 0,
+            GSI1PK: 'PENDING#default',
+            GSI1SK: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      })
+      .mockResolvedValue({});
+
+    await storage.claimBatch('default', 5);
+
+    const claimUpdate = send.mock.calls
+      .map((call) => call[0] as unknown)
+      .find(
+        (command): command is UpdateCommand =>
+          command instanceof UpdateCommand && command.input.Key?.PK === 'NOTIFY#default',
+      );
+    if (!claimUpdate) {
+      throw new Error('Expected claim UpdateCommand on NOTIFY item');
+    }
+    assertUpdateAliasesStatus(claimUpdate);
+    expect(claimUpdate.input.UpdateExpression).toContain('batchId');
   });
 });

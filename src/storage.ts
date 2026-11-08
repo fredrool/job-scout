@@ -643,8 +643,8 @@ export class DynamoJobStorage implements JobStorage {
       new UpdateCommand({
         TableName: this.tableName,
         Key: { PK: `NOTIFY#${userId}`, SK: notificationKey },
-        UpdateExpression: 'SET #status = :status, result = :result REMOVE batchId, GSI1PK, GSI1SK',
-        ExpressionAttributeNames: { '#status': 'status' },
+        UpdateExpression: 'SET #status = :status, #result = :result REMOVE batchId, GSI1PK, GSI1SK',
+        ExpressionAttributeNames: { '#status': 'status', '#result': 'result' },
         ExpressionAttributeValues: { ':status': status, ':result': extra },
       }),
     );
@@ -659,8 +659,8 @@ export class DynamoJobStorage implements JobStorage {
       new UpdateCommand({
         TableName: this.tableName,
         Key: { PK: `BATCH#${batch.userId}`, SK: batch.batchId },
-        UpdateExpression: 'SET #status = :status, result = :result',
-        ExpressionAttributeNames: { '#status': 'status' },
+        UpdateExpression: 'SET #status = :status, #result = :result',
+        ExpressionAttributeNames: { '#status': 'status', '#result': 'result' },
         ExpressionAttributeValues: { ':status': status, ':result': extra },
       }),
     );
