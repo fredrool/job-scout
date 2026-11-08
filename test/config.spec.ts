@@ -9,6 +9,11 @@ describe('environment configuration', () => {
     expect(config.MOCK_MODE).toBe(true);
   });
 
+  it('defaults NOTIFICATION_EMAIL for local CLI commands when unset', () => {
+    const config = parseEnvironment({});
+    expect(config.NOTIFICATION_EMAIL).toBe('alerts@example.com');
+  });
+
   it('rejects invalid recipients and mock production mode', () => {
     expect(() => parseEnvironment({ NOTIFICATION_EMAIL: 'not-an-email' })).toThrow();
     expect(() =>

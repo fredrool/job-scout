@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import 'reflect-metadata';
+import { loadLocalEnvFile } from './load-local-env.js';
+
+loadLocalEnvFile();
 import { readFile } from 'node:fs/promises';
 import { NestFactory } from '@nestjs/core';
 import { parse } from 'yaml';
@@ -7,10 +10,15 @@ import { AppModule } from './app.module.js';
 import { companySchema, marketplaceProviderKindSchema, type UserFeedback } from './domain.js';
 import { ScanPipeline } from './pipeline.js';
 import { CompanyRegistry } from './registry.js';
-import type { JobStorage } from './storage.js';
+import { createReviewJobStorage, type JobStorage } from './storage.js';
 import { ConfigService } from './config.js';
 import { DiscoveryService } from './discovery.js';
 import { MarketplaceDiscoveryService } from './marketplace-discovery.js';
+import {
+  formatJobsReviewTable,
+  listEvaluatedJobsForReview,
+  parseJobsReviewArgs,
+} from './jobs-review.js';
 
 const usageText = [
   'Usage:',
@@ -25,6 +33,7 @@ const usageText = [
   '  npm run cli -- providers test <adzuna|remotive|jooble>',
   '  npm run cli -- providers test-all',
   '  npm run cli -- feedback <canonical-id> <interested|applied|rejected|interviewing|offered|closed> [reason]',
+  '  npm run jobs:review -- --min-score 60 --limit 20 [--eligible-only] [--diagnostic]',
 ].join('\n');
 
 function usage(): never {
@@ -135,6 +144,42 @@ async function main(): Promise<void> {
             activeSources: configured.companies.filter((company) => company.enabled).length,
             checkedAt: result.completedAt,
             sources: result.sources,
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+    if (command === 'jobs' && action === 'review') {
+      const options = parseJobsReviewArgs(args.slice(2));
+      const config = app.get(ConfigService);
+      const storage = config.values.MOCK_MODE
+        ? createReviewJobStorage(config.values.DYNAMODB_TABLE_NAME)
+        : app.get<JobStorage>('JOB_STORAGE');
+      const profile = await app.get(CompanyRegistry).loadProfile();
+      const feedback = await storage.feedback(config.values.USER_ID);
+      const result = await listEvaluatedJobsForReview(
+        storage,
+        profile,
+        config.values,
+        options,
+        undefined,
+        feedback,
+      );
+      console.log(formatJobsReviewTable(result.rows));
+      console.log(
+        JSON.stringify(
+          {
+            matched: result.rows.length,
+            minScore: options.minScore,
+            limit: options.limit,
+            eligibleOnly: options.eligibleOnly,
+            mockMode: config.values.MOCK_MODE,
+            dynamodbTableName: config.values.DYNAMODB_TABLE_NAME,
+            indexNotes:
+              'GSI3 SCORE# (queued), GSI3 EVALREVIEW# (cached eval index), GSI1 JOBSTATUS#ACTIVE + EVAL# join (active jobs). Bounded EVAL# scan for legacy cache rows.',
+            ...(result.diagnostics ? { diagnostic: result.diagnostics } : {}),
           },
           null,
           2,

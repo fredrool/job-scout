@@ -28,7 +28,8 @@ npm run cli -- --help
 npm run package
 ```
 
-Copy `.env.example` to `.env` (or export the values through your shell).
+Copy `.env.example` to `.env` (or export the values through your shell). The CLI
+loads `.env` automatically when variables are not already set in the shell.
 `NOTIFICATION_EMAIL` and `SENDER_EMAIL` are configuration only and are never
 read from the profile. Useful local commands:
 
@@ -45,7 +46,17 @@ npm run cli -- providers test adzuna
 npm run cli -- providers test-all
 npm run cli -- scan dry-run
 npm run cli -- feedback JOB_ID interested
+npm run jobs:review -- --min-score 60 --limit 20
 ```
+
+On Windows PowerShell, pass flags after `--` so npm forwards them to the script:
+
+```powershell
+npm run jobs:review -- --min-score 60 --limit 20
+npm run jobs:review -- --min-score 80 --limit 10 --eligible-only
+```
+
+`jobs review` is read-only: it queries DynamoDB (GSI3 for scored notification rows, GSI1 for active jobs joined with cached `EVAL#` records), recomputes the displayed final score from the cached Bedrock evaluation, and prints a table. It does not run discovery or Bedrock. Evaluations for active jobs appear only when an `EVAL#` cache entry exists; jobs that were evaluated but expired are omitted unless they remain in the notification score index.
 
 New companies are always added disabled. Review terms, ownership, board token,
 and a fixture before enabling one. `companies list` reports configured active

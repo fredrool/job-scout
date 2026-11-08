@@ -14,7 +14,7 @@ export const environmentSchema = z
     MOCK_MODE: booleanFromString.default(true),
     AWS_REGION: z.string().min(1).default('us-east-1'),
     BEDROCK_MODEL_ID: z.string().min(1).default('us.anthropic.claude-haiku-4-5-20251001-v1:0'),
-    NOTIFICATION_EMAIL: z.email(),
+    NOTIFICATION_EMAIL: z.email().default('alerts@example.com'),
     SENDER_EMAIL: z.email().default('sender@example.com'),
     DYNAMODB_TABLE_NAME: z.string().min(1).default('job-scout-local'),
     USER_ID: z.string().min(1).default('default'),

@@ -8,10 +8,15 @@ import {
   PutCommand,
   QueryCommand,
   type QueryCommandInput,
+  ScanCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type { AdzunaSearchCursor } from './adzuna-scheduler.js';
 import type { EvaluationCache, EvaluationRecord } from './ai.js';
+import type {
+  EvaluationPersistContext,
+  PersistedEvaluationSnapshot,
+} from './evaluation-persist.js';
 import type {
   MarketplaceProviderKind,
   MatchResult,
@@ -83,6 +88,22 @@ export interface JobStorage extends EvaluationCache {
   listPendingEvaluations(userId: string, limit: number): Promise<PendingEvaluation[]>;
   removePendingEvaluation(userId: string, jobKey: string): Promise<void>;
   recordPendingEvaluationFailure(userId: string, jobKey: string, error: string): Promise<void>;
+  listActiveJobs(limit: number): Promise<NormalizedJob[]>;
+  listScoredNotifications(userId: string, limit: number): Promise<ScoredNotificationSnapshot[]>;
+  listIndexedEvaluations(userId: string, limit: number): Promise<PersistedEvaluationSnapshot[]>;
+  buildEvaluationCacheMap(maxItems: number): Promise<Map<string, PersistedEvaluationSnapshot>>;
+  getJobByKey(jobKey: string): Promise<NormalizedJob | undefined>;
+}
+
+export function createReviewJobStorage(tableName: string): DynamoJobStorage {
+  return new DynamoJobStorage(tableName);
+}
+
+export interface ScoredNotificationSnapshot {
+  notificationKey: string;
+  match: MatchResult;
+  evaluation: EvaluationRecord;
+  createdAt: string;
 }
 
 @Injectable()
@@ -334,11 +355,25 @@ export class DynamoJobStorage implements JobStorage {
     return result.Item?.record as EvaluationRecord | undefined;
   }
 
-  async putEvaluation(record: EvaluationRecord): Promise<void> {
+  async putEvaluation(record: EvaluationRecord, context?: EvaluationPersistContext): Promise<void> {
     await this.document.send(
       new PutCommand({
         TableName: this.tableName,
-        Item: { PK: `EVAL#${record.cacheKey}`, SK: 'EVALUATION', record },
+        Item: {
+          PK: `EVAL#${record.cacheKey}`,
+          SK: 'EVALUATION',
+          record,
+          ...(context
+            ? {
+                jobKey: context.jobKey,
+                contentHash: context.contentHash,
+                profileVersion: context.profileVersion,
+                modelId: context.modelId,
+                GSI3PK: `EVALREVIEW#${context.userId}`,
+                GSI3SK: `${record.createdAt}#${context.jobKey}`,
+              }
+            : {}),
+        },
       }),
     );
   }
@@ -459,6 +494,96 @@ export class DynamoJobStorage implements JobStorage {
     );
   }
 
+  async listActiveJobs(limit: number): Promise<NormalizedJob[]> {
+    const items = await this.queryAll(
+      {
+        TableName: this.tableName,
+        IndexName: 'GSI1',
+        KeyConditionExpression: 'GSI1PK = :active',
+        ExpressionAttributeValues: { ':active': 'JOBSTATUS#ACTIVE' },
+      },
+      limit,
+    );
+    return items.map((item) => itemToNormalizedJob(item));
+  }
+
+  async getJobByKey(jobKey: string): Promise<NormalizedJob | undefined> {
+    const result = await this.document.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: { PK: `JOB#${jobKey}`, SK: 'JOB' },
+      }),
+    );
+    const item = result.Item;
+    if (!item || item.status === 'EXPIRED') return undefined;
+    return itemToNormalizedJob(item);
+  }
+
+  async listIndexedEvaluations(
+    userId: string,
+    limit: number,
+  ): Promise<PersistedEvaluationSnapshot[]> {
+    const items = await this.queryAll(
+      {
+        TableName: this.tableName,
+        IndexName: 'GSI3',
+        KeyConditionExpression: 'GSI3PK = :review',
+        ExpressionAttributeValues: { ':review': `EVALREVIEW#${userId}` },
+        ScanIndexForward: false,
+      },
+      limit,
+    );
+    return items.map((item) => snapshotFromEvaluationItem(item));
+  }
+
+  async buildEvaluationCacheMap(
+    maxItems: number,
+  ): Promise<Map<string, PersistedEvaluationSnapshot>> {
+    const map = new Map<string, PersistedEvaluationSnapshot>();
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+    while (map.size < maxItems) {
+      const result = await this.document.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression: 'begins_with(PK, :prefix) AND SK = :sk',
+          ExpressionAttributeValues: { ':prefix': 'EVAL#', ':sk': 'EVALUATION' },
+          ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
+          Limit: Math.min(100, Math.max(1, maxItems - map.size)),
+        }),
+      );
+      for (const item of (result.Items ?? []) as Record<string, unknown>[]) {
+        const snapshot = snapshotFromEvaluationItem(item);
+        map.set(snapshot.cacheKey, snapshot);
+        if (map.size >= maxItems) break;
+      }
+      exclusiveStartKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+      if (!exclusiveStartKey) break;
+    }
+    return map;
+  }
+
+  async listScoredNotifications(
+    userId: string,
+    limit: number,
+  ): Promise<ScoredNotificationSnapshot[]> {
+    const items = await this.queryAll(
+      {
+        TableName: this.tableName,
+        IndexName: 'GSI3',
+        KeyConditionExpression: 'GSI3PK = :score',
+        ExpressionAttributeValues: { ':score': `SCORE#${userId}` },
+        ScanIndexForward: false,
+      },
+      limit,
+    );
+    return items.map((item) => ({
+      notificationKey: item.notificationKey as string,
+      match: item.match as MatchResult,
+      evaluation: item.evaluation as EvaluationRecord,
+      createdAt: (item.createdAt as string | undefined) ?? new Date(0).toISOString(),
+    }));
+  }
+
   async recordPendingEvaluationFailure(
     userId: string,
     jobKey: string,
@@ -574,6 +699,7 @@ export class DynamoJobStorage implements JobStorage {
 export class MemoryJobStorage implements JobStorage {
   private lease: { owner: string; expiresAt: number } | undefined;
   private readonly evaluations = new Map<string, EvaluationRecord>();
+  private readonly evaluationIndex = new Map<string, PersistedEvaluationSnapshot>();
   private readonly jobs = new Map<
     string,
     {
@@ -666,8 +792,18 @@ export class MemoryJobStorage implements JobStorage {
   getEvaluation(key: string): Promise<EvaluationRecord | undefined> {
     return Promise.resolve(this.evaluations.get(key));
   }
-  putEvaluation(record: EvaluationRecord): Promise<void> {
+  putEvaluation(record: EvaluationRecord, context?: EvaluationPersistContext): Promise<void> {
     this.evaluations.set(record.cacheKey, record);
+    if (context) {
+      this.evaluationIndex.set(`${context.userId}#${context.jobKey}`, {
+        cacheKey: record.cacheKey,
+        record,
+        jobKey: context.jobKey,
+        contentHash: context.contentHash,
+        profileVersion: context.profileVersion,
+        modelId: context.modelId,
+      });
+    }
     return Promise.resolve();
   }
   feedback(userId: string): Promise<UserFeedback[]> {
@@ -731,6 +867,82 @@ export class MemoryJobStorage implements JobStorage {
     });
     return Promise.resolve();
   }
+  listActiveJobs(limit: number): Promise<NormalizedJob[]> {
+    return Promise.resolve(
+      [...this.jobs.values()]
+        .filter((entry) => entry.status === 'ACTIVE')
+        .map((entry) => entry.job)
+        .slice(0, limit),
+    );
+  }
+  listScoredNotifications(userId: string, limit: number): Promise<ScoredNotificationSnapshot[]> {
+    return Promise.resolve(
+      [...this.pending.values()]
+        .filter((item) => item.userId === userId)
+        .sort((left, right) => right.match.score - left.match.score)
+        .slice(0, limit)
+        .map((item) => ({
+          notificationKey: item.notificationKey,
+          match: item.match,
+          evaluation: item.evaluation,
+          createdAt: item.createdAt,
+        })),
+    );
+  }
+  getJobByKey(jobKey: string): Promise<NormalizedJob | undefined> {
+    const entry = this.jobs.get(jobKey);
+    if (!entry || entry.status === 'EXPIRED') return Promise.resolve(undefined);
+    return Promise.resolve(entry.job);
+  }
+  listIndexedEvaluations(userId: string, limit: number): Promise<PersistedEvaluationSnapshot[]> {
+    const prefix = `${userId}#`;
+    return Promise.resolve(
+      [...this.evaluationIndex.entries()]
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([, snapshot]) => snapshot)
+        .sort((left, right) => right.record.createdAt.localeCompare(left.record.createdAt))
+        .slice(0, limit),
+    );
+  }
+  buildEvaluationCacheMap(maxItems: number): Promise<Map<string, PersistedEvaluationSnapshot>> {
+    const map = new Map<string, PersistedEvaluationSnapshot>();
+    for (const snapshot of this.evaluationIndex.values()) {
+      map.set(snapshot.cacheKey, snapshot);
+      if (map.size >= maxItems) break;
+    }
+    for (const [cacheKey, record] of this.evaluations) {
+      if (map.has(cacheKey)) continue;
+      map.set(cacheKey, { cacheKey, record });
+      if (map.size >= maxItems) break;
+    }
+    return Promise.resolve(map);
+  }
+}
+
+function snapshotFromEvaluationItem(item: Record<string, unknown>): PersistedEvaluationSnapshot {
+  const record = item.record as EvaluationRecord;
+  return {
+    cacheKey: record.cacheKey,
+    record,
+    ...(typeof item.jobKey === 'string' ? { jobKey: item.jobKey } : {}),
+    ...(typeof item.contentHash === 'string' ? { contentHash: item.contentHash } : {}),
+    ...(typeof item.profileVersion === 'string' ? { profileVersion: item.profileVersion } : {}),
+    ...(typeof item.modelId === 'string' ? { modelId: item.modelId } : {}),
+  };
+}
+
+function itemToNormalizedJob(item: Record<string, unknown>): NormalizedJob {
+  const {
+    PK: _pk,
+    SK: _sk,
+    GSI1PK: _g1pk,
+    GSI1SK: _g1sk,
+    GSI2PK: _g2pk,
+    GSI2SK: _g2sk,
+    status: _status,
+    ...job
+  } = item;
+  return job as unknown as NormalizedJob;
 }
 
 export function mergeJobEvidence(

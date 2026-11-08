@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
+import { evaluationCacheKey } from './evaluation-cache-key.js';
 import {
   BedrockRuntimeClient,
   ConverseCommand,
@@ -9,6 +9,7 @@ import type { LlmEvaluation, MatchResult, SearchProfile } from './domain.js';
 import { BEDROCK_CLIENT } from './discovery.js';
 import { ConfigService } from './config.js';
 import { BedrockParseError, parseConverseEvaluation } from './bedrock-response.js';
+import type { EvaluationPersistContext } from './evaluation-persist.js';
 
 export interface EvaluationRecord {
   cacheKey: string;
@@ -22,7 +23,7 @@ export interface EvaluationRecord {
 
 export interface EvaluationCache {
   getEvaluation(key: string): Promise<EvaluationRecord | undefined>;
-  putEvaluation(record: EvaluationRecord): Promise<void>;
+  putEvaluation(record: EvaluationRecord, context?: EvaluationPersistContext): Promise<void>;
 }
 
 export interface BedrockRunStats {
@@ -64,11 +65,7 @@ export class BedrockEvaluator {
   }
 
   async evaluate(match: MatchResult, profile: SearchProfile): Promise<EvaluationRecord> {
-    const key = createHash('sha256')
-      .update(
-        `${match.job.contentHash}:${profile.version}:${this.config.values.BEDROCK_MODEL_ID}:score-v2`,
-      )
-      .digest('hex');
+    const key = evaluationCacheKey(match.job, profile, this.config.values.BEDROCK_MODEL_ID);
     const cached = await this.cache.getEvaluation(key);
     if (cached) {
       this.runStats.cacheHits += 1;
@@ -79,7 +76,7 @@ export class BedrockEvaluator {
     }
     if (this.config.values.MOCK_MODE) {
       const record = this.mockRecord(key, match);
-      await this.cache.putEvaluation(record);
+      await this.cache.putEvaluation(record, this.persistContext(match, profile));
       return record;
     }
 
@@ -105,7 +102,7 @@ export class BedrockEvaluator {
         this.runStats.inputTokens += inputTokens;
         this.runStats.outputTokens += outputTokens;
         this.runStats.estimatedCostUsd += record.estimatedCostUsd;
-        await this.cache.putEvaluation(record);
+        await this.cache.putEvaluation(record, this.persistContext(match, profile));
         return record;
       } catch (error) {
         lastError = error;
@@ -173,6 +170,16 @@ export class BedrockEvaluator {
         ],
       }),
     );
+  }
+
+  private persistContext(match: MatchResult, profile: SearchProfile): EvaluationPersistContext {
+    return {
+      userId: this.config.values.USER_ID,
+      jobKey: match.job.dedupeKey ?? match.job.canonicalId,
+      contentHash: match.job.contentHash,
+      profileVersion: profile.version,
+      modelId: this.config.values.BEDROCK_MODEL_ID,
+    };
   }
 
   private mockRecord(cacheKey: string, match: MatchResult): EvaluationRecord {
