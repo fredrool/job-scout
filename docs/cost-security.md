@@ -15,11 +15,12 @@ current regional pricing before deployment. Cross-region inference may process
 requests in any region represented by the configured profile.
 
 Each evaluation persists Bedrock input/output token counts and an estimated
-cost. The estimate uses `BEDROCK_INPUT_COST_PER_MILLION` and
-`BEDROCK_OUTPUT_COST_PER_MILLION` (example defaults: USD 1 and USD 5). These
-are assumptions, not quoted prices; update them from the current AWS price
-page before relying on estimates. Evaluation cache keys include content,
-profile, scoring, and model versions.
+cost. Known models (Claude Haiku 4.5, Amazon Nova Micro) use catalog rates in
+`src/bedrock-pricing.ts`; other models fall back to `BEDROCK_INPUT_COST_PER_MILLION`
+and `BEDROCK_OUTPUT_COST_PER_MILLION`. Verify numbers against the current AWS
+price page before relying on estimates. Evaluation cache keys include content,
+profile, scoring, and model versions. Compare candidate models locally with
+`npm run models:compare` before changing `BEDROCK_MODEL_ID` or Terraform.
 
 Cost controls:
 

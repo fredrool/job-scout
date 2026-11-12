@@ -14,6 +14,12 @@ import { createReviewJobStorage, type JobStorage } from './storage.js';
 import { ConfigService } from './config.js';
 import { DiscoveryService } from './discovery.js';
 import { MarketplaceDiscoveryService } from './marketplace-discovery.js';
+import { BedrockEvaluator } from './ai.js';
+import {
+  compareBedrockModels,
+  formatModelCompareTable,
+  parseModelCompareArgs,
+} from './bedrock-model-compare.js';
 import {
   formatJobsReviewTable,
   listEvaluatedJobsForReview,
@@ -34,6 +40,8 @@ const usageText = [
   '  npm run cli -- providers test-all',
   '  npm run cli -- feedback <canonical-id> <interested|applied|rejected|interviewing|offered|closed> [reason]',
   '  npm run jobs:review -- --min-score 60 --limit 20 [--eligible-only] [--diagnostic]',
+  '  npm run models:compare -- --limit 15 [--compare-model us.amazon.nova-micro-v1:0]',
+  '  (models:compare requires MOCK_MODE=false; read-only — no cache or notification writes)',
 ].join('\n');
 
 function usage(): never {
@@ -144,6 +152,54 @@ async function main(): Promise<void> {
             activeSources: configured.companies.filter((company) => company.enabled).length,
             checkedAt: result.completedAt,
             sources: result.sources,
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+    if (command === 'models' && action === 'compare') {
+      const config = app.get(ConfigService);
+      if (config.values.MOCK_MODE) {
+        throw new Error(
+          'Model comparison requires MOCK_MODE=false and live Bedrock credentials. BEDROCK_MODEL_ID remains the production rollback default.',
+        );
+      }
+      const compareArgs = parseModelCompareArgs(args.slice(2));
+      const storage = app.get<JobStorage>('JOB_STORAGE');
+      const profile = await app.get(CompanyRegistry).loadProfile();
+      const feedback = await storage.feedback(config.values.USER_ID);
+      const report = await compareBedrockModels(
+        storage,
+        profile,
+        config.values,
+        app.get(BedrockEvaluator),
+        compareArgs,
+        undefined,
+        feedback,
+      );
+      console.log(formatModelCompareTable(report));
+      console.log(
+        JSON.stringify(
+          {
+            readOnly: report.readOnly,
+            productionModelId: config.values.BEDROCK_MODEL_ID,
+            baselineModelId: report.baselineModelId,
+            compareModelId: report.compareModelId,
+            scannedCacheEntries: report.scannedCacheEntries,
+            selected: report.selected,
+            compared: report.compared,
+            failures: report.failures,
+            invalidJsonResponses: report.invalidJsonResponses,
+            remoteEligibilityChanges: report.remoteEligibilityChanges,
+            totalCompareLatencyMs: report.totalCompareLatencyMs,
+            totalCompareInputTokens: report.totalCompareInputTokens,
+            totalCompareOutputTokens: report.totalCompareOutputTokens,
+            totalCompareCostUsd: report.totalCompareCostUsd,
+            baselinePricing: report.baselinePricing,
+            comparePricing: report.comparePricing,
+            rollback: `Set BEDROCK_MODEL_ID=${config.values.BEDROCK_MODEL_ID} (current default) to stay on Claude Haiku.`,
           },
           null,
           2,

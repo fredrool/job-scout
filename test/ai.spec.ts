@@ -83,4 +83,42 @@ describe('BedrockEvaluator', () => {
     expect(result.evaluation.remoteEligibility).toBe('POSSIBLE');
     expect(result.estimatedCostUsd).toBeCloseTo(0.002);
   });
+
+  it('evaluateProbe uses alternate model without touching cache', async () => {
+    const storage = new MemoryJobStorage();
+    const putEvaluation = vi.spyOn(storage, 'putEvaluation');
+    const getEvaluation = vi.spyOn(storage, 'getEvaluation');
+    const send = vi.fn().mockResolvedValue({
+      output: {
+        message: {
+          content: [
+            {
+              text: JSON.stringify({
+                strengths: ['Relevant stack'],
+                weaknesses: [],
+                mustHaveGaps: [],
+                remoteEligibility: 'CONFIRMED',
+                legitimacySignals: ['Official source'],
+                fitScore: 77,
+                confidence: 0.7,
+                recommendation: 'Apply after verifying remote eligibility.',
+              }),
+            },
+          ],
+        },
+      },
+      usage: { inputTokens: 500, outputTokens: 80 },
+    });
+    const evaluator = new BedrockEvaluator(
+      { send } as unknown as BedrockRuntimeClient,
+      config(false),
+      storage,
+    );
+    const probe = await evaluator.evaluateProbe(match, profile, 'us.amazon.nova-micro-v1:0');
+    expect(probe.record.modelId).toBe('us.amazon.nova-micro-v1:0');
+    expect(probe.record.estimatedCostUsd).toBeLessThan(0.001);
+    expect(getEvaluation).not.toHaveBeenCalled();
+    expect(putEvaluation).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledOnce();
+  });
 });

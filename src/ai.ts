@@ -8,6 +8,7 @@ import {
 import type { LlmEvaluation, MatchResult, SearchProfile } from './domain.js';
 import { BEDROCK_CLIENT } from './discovery.js';
 import { ConfigService } from './config.js';
+import { estimateBedrockCostUsd } from './bedrock-pricing.js';
 import { BedrockParseError, parseConverseEvaluation } from './bedrock-response.js';
 import type { EvaluationPersistContext } from './evaluation-persist.js';
 
@@ -33,6 +34,13 @@ export interface BedrockRunStats {
   outputTokens: number;
   estimatedCostUsd: number;
   parseRetries: number;
+}
+
+export interface BedrockProbeResult {
+  record: EvaluationRecord;
+  latencyMs: number;
+  parseAttempts: number;
+  apiCalls: number;
 }
 
 const EVALUATION_SYSTEM_PROMPT =
@@ -84,7 +92,12 @@ export class BedrockEvaluator {
     for (let attempt = 0; attempt < MAX_PARSE_ATTEMPTS; attempt += 1) {
       if (attempt > 0) this.runStats.parseRetries += 1;
       try {
-        const output = await this.invokeConverse(match, profile, attempt);
+        const output = await this.invokeConverse(
+          match,
+          profile,
+          attempt,
+          this.config.values.BEDROCK_MODEL_ID,
+        );
         const parsed = parseConverseEvaluation(output);
         const inputTokens = output.usage?.inputTokens ?? 0;
         const outputTokens = output.usage?.outputTokens ?? 0;
@@ -93,9 +106,12 @@ export class BedrockEvaluator {
           evaluation: parsed.evaluation,
           inputTokens,
           outputTokens,
-          estimatedCostUsd:
-            (inputTokens / 1_000_000) * this.config.values.BEDROCK_INPUT_COST_PER_MILLION +
-            (outputTokens / 1_000_000) * this.config.values.BEDROCK_OUTPUT_COST_PER_MILLION,
+          estimatedCostUsd: estimateBedrockCostUsd(
+            this.config.values.BEDROCK_MODEL_ID,
+            inputTokens,
+            outputTokens,
+            this.config.values,
+          ),
           modelId: this.config.values.BEDROCK_MODEL_ID,
           createdAt: new Date().toISOString(),
         };
@@ -118,20 +134,80 @@ export class BedrockEvaluator {
     throw lastError instanceof Error ? lastError : new Error('Bedrock evaluation failed');
   }
 
+  /**
+   * Live Bedrock Converse call for a specific model. Does not read or write the evaluation cache.
+   */
+  async evaluateProbe(
+    match: MatchResult,
+    profile: SearchProfile,
+    modelId: string,
+  ): Promise<BedrockProbeResult> {
+    if (this.config.values.MOCK_MODE) {
+      throw new Error('evaluateProbe requires MOCK_MODE=false');
+    }
+    const startedAt = Date.now();
+    let apiCalls = 0;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < MAX_PARSE_ATTEMPTS; attempt += 1) {
+      try {
+        const output = await this.invokeConverse(match, profile, attempt, modelId, false);
+        apiCalls += 1;
+        const parsed = parseConverseEvaluation(output);
+        const inputTokens = output.usage?.inputTokens ?? 0;
+        const outputTokens = output.usage?.outputTokens ?? 0;
+        const record: EvaluationRecord = {
+          cacheKey: 'probe',
+          evaluation: parsed.evaluation,
+          inputTokens,
+          outputTokens,
+          estimatedCostUsd: estimateBedrockCostUsd(
+            modelId,
+            inputTokens,
+            outputTokens,
+            this.config.values,
+          ),
+          modelId,
+          createdAt: new Date().toISOString(),
+        };
+        return {
+          record,
+          latencyMs: Date.now() - startedAt,
+          parseAttempts: attempt + 1,
+          apiCalls,
+        };
+      } catch (error) {
+        lastError = error;
+        if (error instanceof BedrockParseError) {
+          logParseDiagnostic(jobKeyForLog(match), attempt + 1, error);
+          continue;
+        }
+        apiCalls += 1;
+        if (attempt + 1 < MAX_PARSE_ATTEMPTS) {
+          continue;
+        }
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('Bedrock probe evaluation failed');
+  }
+
   private async invokeConverse(
     match: MatchResult,
     profile: SearchProfile,
     attempt: number,
+    modelId: string,
+    trackRunStats = true,
   ): Promise<ConverseCommandOutput> {
-    this.calls += 1;
-    this.runStats.apiCalls += 1;
+    if (trackRunStats) {
+      this.calls += 1;
+      this.runStats.apiCalls += 1;
+    }
     const repairHint =
       attempt > 0
         ? 'Your previous answer was not valid JSON or did not match the schema. Return only one compact JSON object.'
         : '';
     return this.client.send(
       new ConverseCommand({
-        modelId: this.config.values.BEDROCK_MODEL_ID,
+        modelId,
         inferenceConfig: { temperature: 0, maxTokens: 1_400 },
         system: [{ text: EVALUATION_SYSTEM_PROMPT }],
         messages: [

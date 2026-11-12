@@ -12,6 +12,13 @@ sender_email       = "job-scout-dev@example.com"
 # Keep disabled until the registry, SES identities, and Bedrock access are verified.
 schedule_enabled              = false
 dry_run                       = true
+# Rollback default (Haiku):
+# bedrock_inference_profile_id = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+# bedrock_model_id             = "anthropic.claude-haiku-4-5-20251001-v1:0"
+# Nova Micro (after local models:compare and IAM verify):
+# bedrock_inference_profile_id = "us.amazon.nova-micro-v1:0"
+# bedrock_model_id             = "amazon.nova-micro-v1:0"
+# bedrock_model_regions        = ["us-east-1"]
 score_threshold               = 80
 digest_limit                  = 25
 max_bedrock_calls_per_scan    = 50

@@ -150,13 +150,13 @@ variable "dynamodb_deletion_protection" {
 }
 
 variable "bedrock_inference_profile_id" {
-  description = "AWS cross-region inference profile used by Bedrock Converse."
+  description = "Model or inference profile ID passed to Bedrock Converse as BEDROCK_MODEL_ID. Default: Claude Haiku 4.5. To evaluate Nova Micro: us.amazon.nova-micro-v1:0."
   type        = string
   default     = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 }
 
 variable "bedrock_model_id" {
-  description = "Foundation model behind the inference profile."
+  description = "Foundation model ARN segment for IAM (InvokeModel). Haiku: anthropic.claude-haiku-4-5-20251001-v1:0. Nova Micro: amazon.nova-micro-v1:0."
   type        = string
   default     = "anthropic.claude-haiku-4-5-20251001-v1:0"
 }

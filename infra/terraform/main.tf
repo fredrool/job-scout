@@ -149,7 +149,7 @@ resource "aws_iam_role_policy" "lambda" {
         Resource = [local.table_arn, "${local.table_arn}/index/*"]
       },
       {
-        Sid      = "UseClaudeInferenceProfile"
+        Sid      = "UseBedrockConverseModels"
         Effect   = "Allow"
         Action   = ["bedrock:InvokeModel"]
         Resource = concat([local.inference_profile_arn], local.model_arns)

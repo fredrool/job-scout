@@ -12,6 +12,7 @@ sender_email       = "job-scout@example.com"
 # Enable only after completing the production runbook.
 schedule_enabled              = false
 dry_run                       = true
+# bedrock_inference_profile_id / bedrock_model_id — see dev.tfvars.example for Haiku vs Nova Micro.
 score_threshold               = 80
 digest_limit                  = 25
 max_bedrock_calls_per_scan    = 50

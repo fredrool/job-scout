@@ -13,6 +13,7 @@
     "bundle": "esbuild src/handler.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/lambda/index.js --sourcemap --external:@nestjs/microservices --external:@nestjs/platform-express --external:@nestjs/websockets --external:class-validator --external:class-transformer && node scripts/prepare-lambda.mjs",
     "cli": "tsx src/cli.ts",
     "jobs:review": "tsx src/cli.ts jobs review",
+    "models:compare": "tsx src/cli.ts models compare",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
